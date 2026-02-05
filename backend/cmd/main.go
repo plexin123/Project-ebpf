@@ -24,6 +24,7 @@ type TCP_Packet struct {
 	PortDestination     uint32
 }
 
+// this a sample
 type TCP_Packet2 struct {
 	Service_origin      string
 	Service_destination string
