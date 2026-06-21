@@ -10,11 +10,25 @@ struct {
 } lumen_trace SEC(".maps");
 
 
+struct {
+    __u32 processid;
+    __u32 processparentid;
+    char comm[16];
+}
+
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 24);
+} events SEC(".maps");
+
 //  Capture packets
 //  Add that those metrics in a map
 //  Counters by key
 //  Verifier safe
 //  Then this is consumed in go
+
+SEC(SEC("tracepoint/syscalls/sys_enter_execve"))
+
 
 SEC("xdp")
 int lumen_trace(struct xdp_md *ctx){
@@ -42,8 +56,8 @@ int lumen_trace(struct xdp_md *ctx){
     }
     
     // get the the type of communication layer TCP or UDP
-    
-    __u32 dummy_ip = 1234;
+    //
+    __u32 dummy_ip = 1234;  
     // update map
     // idea 
     // first we need to check if the key exists in the map
@@ -58,6 +72,7 @@ int lumen_trace(struct xdp_md *ctx){
         __sync_fetch_and_add(value, packet_size)
     }
     return XDP_PASS;
-
-
 }
+
+a
+// execve
