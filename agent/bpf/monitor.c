@@ -1,25 +1,8 @@
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
-
-
-struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries,1024);
-    __type(key, __u32);
-    __type(value, __u64);
-} lumen_trace SEC(".maps");
-
-
-struct {
-    __u32 processid;
-    __u32 processparentid;
-    char comm[16];
-}
-
-struct {
-    __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1 << 24);
-} events SEC(".maps");
+#include <bpf/bpf_core_read.h>   
+#include <linux/sched.h>          
+#include "ebpf_structures.h"
 
 //  Capture packets
 //  Add that those metrics in a map
@@ -27,52 +10,39 @@ struct {
 //  Verifier safe
 //  Then this is consumed in go
 
-SEC(SEC("tracepoint/syscalls/sys_enter_execve"))
+// hooks into the exact moment a process attempts to execute a new program on Linux
+// define an struct of the event 
+SEC("tracepoint/syscalls/sys_enter_execve")
+int new_program(struct trace_event_raw_sys_enter *ctx){
+
+    // pid_tgid packs both values: [ tgid (upper 32) | tid (lower 32) ]
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    
+    __u32 pid = pid_tgid >> 32  // tgid = what userspace calls pid
+
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task_btf();
+
+    __u32 ppid = BPF_CORE_READ(task,real_parent, tgid);
+    //Declare as a pointer
+    struct process_event *process_event
+    //Use this variable that will the memory address of the 
+    process_event = bpf_ringbuf_reserve(&events, sizeof(struct process_event), 0);
 
 
-SEC("xdp")
-int lumen_trace(struct xdp_md *ctx){
-    
-    // data_end __u32
-    // data __u32
-    __u32 packet_size = ctx->data_end - ctx->data;
-    
-    // convert the data a __u32 type ->  64 bits -> convert into a pointer
-    void *data = (void *)(long) ctx->data;
-    // pointer to a pointer -> basically explaining that its pointing to a structure
-    struct ethhdr *eth = data
-    
-    void *ipdata = (void *) data + sizeof(struct ethhdr)
- 
-    struct iphdr *iph = ipdata
-    
-    char *type_of_protocol = NULL
+    if(!e){
+        return 0;
+    }
+        
+    process_event->process_id = pid;
+    process_event->parent_process_id = ppid;
 
-    if (iph->protocol == 6){
-        type_of_protocol = "TCP"
-    }
-    else if(iph->protocol == 17){
-        type_of_protocol = "UDP"
-    }
+    bpf_get_current_comm(&process_event->name_of_process, sizeof(process_event->name_of_process));
+
+    bpf_ringbuf_submit(process_event,0);
     
-    // get the the type of communication layer TCP or UDP
-    //
-    __u32 dummy_ip = 1234;  
-    // update map
-    // idea 
-    // first we need to check if the key exists in the map
-    // if the key doesnt exists we add in the map
-    // then we need to add the value which is the packets size
-    __u64 *value = bpf_map_lookup_elem(&lumen_trace, &dummy_ip)
-    
-    if (!value){
-            bpf_map_update_elem(&lumen_trace,&dummy_ip, &packet_size, BPF_ANY)
-    }
-    else{
-        __sync_fetch_and_add(value, packet_size)
-    }
-    return XDP_PASS;
+    return 0;
 }
 
-a
-// execve
+
+char LICENSE[] SEC("license") = "GPL";
+
