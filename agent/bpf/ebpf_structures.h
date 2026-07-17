@@ -12,6 +12,16 @@ struct process_event {
     char name_of_process[16];
 };
 #endif
+
+#ifndef __LATENCY_H
+#define __LATENCY_H
+struct latency_event{
+    __u64 durations_ns;
+    __u32 pid;
+    char name_of_process[16];
+};
+#endif
+
 /* ring buffer map
     template pattern 
     declaration of a kernel map object 
@@ -30,5 +40,14 @@ struct  {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 24);
 } events SEC(".maps"); 
+#endif
 
+#ifndef __BPF_MAP_TYPE_HASH
+#define __BPF_MAP_TYPE_HASH
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 1024);
+    __type(key,   __u64);
+    __type(value, __u64);
+} start_times SEC(".maps");
 #endif
