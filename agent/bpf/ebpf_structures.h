@@ -17,10 +17,23 @@ struct process_event {
 #define __LATENCY_H
 struct latency_event{
     __u64 durations_ns;
+    __u64 memory_id;
     __u32 pid;
     char name_of_process[16];
 };
 #endif
+
+#ifndef __MEMORY_MAP
+#define __MEMORY_MAP
+struct {
+	__uint(type,BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 1024);
+	__type(key, __u64);
+	__type(value,__u64);
+} memory_map SEC(".maps");
+#endif
+
+
 
 /* ring buffer map
     template pattern 
