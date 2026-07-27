@@ -5,13 +5,14 @@ package main
 
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/binary"
 	"fmt"
-	"debug/elf"
 	"log"
 	"os"
-	"strings"
 	"os/signal"
+	"strings"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -91,11 +92,51 @@ import (
 // }
 
 type Latency_event struct {
-	DurationsNS uint64
-	MemoryPointer uint64
-	PID        uint32
-	_             [4]byte
-	Name_of_process       [16]byte
+	DurationsNS     uint64
+	MemoryPointer   uint64
+	PID             uint32
+	_               [4]byte
+	Name_of_process [16]byte
+}
+
+// for each functionality there is going to be an average
+// func_name - avg = (time end - time start) // amount of calls, amount of calls
+// left pointer starting with the first average time
+// "average_time" : (average_time + DurationNS) / amount_of_calls
+// "amount_calls" : amount_of_calls
+// // for each func_name ->{
+// 		"array_of_time": [times],
+// 		"left_pointer" : 0
+// 		"amount_calls" : 0
+// }
+
+type FunctionStats struct {
+	FunctionName string
+	Window       []uint64
+	baselineflag bool
+	baselinep95  uint64
+}
+
+// map -> each fuction will have the struct FunctionStats
+
+func p95(window []uint64) uint64 {
+	// sort the value
+	sorted := make([]uint64, len(window))
+	copy(sorted, window)
+	// do operation -> 95 // size(window)
+	index_of_95 := int(float64(len(window)) * 0.95)
+	// sorted_value[ans]
+	value := window[index_of_95]
+	// return a
+	return value
+}
+
+func validateWindow(window []uint64) []uint64 {
+	if len(window) > 20 {
+		new_window := window[1:]
+		return new_window
+	}
+	return window
 }
 
 func main() {
@@ -105,15 +146,9 @@ func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("usage: profiler <binary> <function>")
 	}
+
 	binaryPath := os.Args[1]
-	// there is not going to be a function name
-	// Instead we read from the binary, read the table of functions
-	// 	getFunctions() -> []string : all function names
-	// 	filter those functions according to the main.*
-	// 	attach uprobe
-	//	create a map key = memory pointer -> latency_event struct
-	//	
-		
+
 	spec, err := ebpf.LoadCollectionSpec("../../agent/bpf/profiler.bpf.o")
 	if err != nil {
 		log.Fatalf("failed to load spec: %v", err)
@@ -137,51 +172,56 @@ func main() {
 	}
 	f, err := elf.Open(binaryPath)
 
-	if err != nil{
-		log.Fatalf("failed to open ELF: %v", err)	
+	if err != nil {
+		log.Fatalf("failed to open ELF: %v", err)
 	}
 	syms, err := f.Symbols()
-	if err != nil{
+	if err != nil {
 		log.Fatalf("faled to read symbols: %v", err)
 	}
 	f.Close()
-	
-	register_map :=  make(map[uint64]string)
+
+	register_map := make(map[uint64]string)
+	map_of_functions := make(map[string]*FunctionStats)
 	var links []link.Link
-	for _ ,sym := range syms{
-		
+	for _, sym := range syms {
+
 		// filter the according to the name main.*
-		if elf.ST_TYPE(sym.Info) != elf.STT_FUNC{
+		if elf.ST_TYPE(sym.Info) != elf.STT_FUNC {
 			continue
 		}
 
-		if !strings.HasPrefix(sym.Name,"main."){
-			
+		if !strings.HasPrefix(sym.Name, "main.") {
+
 			continue
-			
+
 		}
 
+		up, err := ex.Uprobe(sym.Name, coll.Programs["trace_enter"], nil)
 
-		up, err := ex.Uprobe(sym.Name, coll.Programs["trace_enter"],nil)
-		
-		if err != nil{
+		if err != nil {
 			continue
 		}
-		
-		ret, err := ex.Uretprobe(sym.Name,coll.Programs["trace_exit"], nil)
 
-		if err != nil{
+		ret, err := ex.Uretprobe(sym.Name, coll.Programs["trace_exit"], nil)
+
+		if err != nil {
 			up.Close()
-			continue	
+			continue
 		}
-		
-		links = append(links, up,ret)
-		
-		register_map[sym.Value] = sym.Name
-	}
 
-	defer func(){
-		for _,l := range(links){
+		links = append(links, up, ret)
+
+		register_map[sym.Value] = sym.Name
+		map_of_functions[sym.Name] = &FunctionStats{
+			FunctionName: sym.Name,
+			Window:       []uint64{},
+			baselinep95:  0,
+			baselineflag: false,
+		}
+	}
+	defer func() {
+		for _, l := range links {
 			l.Close()
 		}
 	}()
@@ -203,7 +243,7 @@ func main() {
 	}()
 
 	for {
-		
+
 		record, err := reader.Read()
 		if err != nil {
 			break
@@ -219,12 +259,42 @@ func main() {
 		}
 
 		funcName, ok := register_map[event.MemoryPointer]
-		if !ok{
+		if !ok {
 			continue
 		}
-		fmt.Printf("func: %-40s  duration: %dms\n", funcName, event.DurationsNS/1_000_000)
+		// getting the current_window
+		// validating that if its exceeds the threshold
+		// obtaining the p95
+		current_window := map_of_functions[funcName].Window
+		new_window := append(current_window, event.DurationsNS)
+		validated_window := validateWindow(new_window)
+		if len(validated_window) >= 20 {
+
+			currentbaselinep95 := p95(validated_window)
+
+			baselinep95 := map_of_functions[funcName].baselinep95
+
+			if map_of_functions[funcName].baselineflag == false {
+				map_of_functions[funcName].baselinep95 = currentbaselinep95
+				map_of_functions[funcName].baselineflag = true
+			}
+			if map_of_functions[funcName].baselineflag {
+				drift := float64(currentbaselinep95-baselinep95) / float64(baselinep95)
+				if drift > 0.2 {
+					fmt.Printf("⚠ regression: %s baseline=%dms current=%dms +%.0f%%\n",
+						funcName, baselinep95/1_000_000, currentbaselinep95/1_000_000, drift*100)
+				}
+			}
+
+			map_of_functions[funcName].Window = validated_window
+			fmt.Printf("func: a%-40s  duration: %dms p95: %d\n", funcName, event.DurationsNS/1_000_000)
+		}
 	}
-
+	// func 10
+	// func 20
 	// use function name
-
+	// [20, 30, 10, 40, 50, 29]
+	// [10,20,29,30,40,500000,] ->40
+	// 40,100,120,140,150,100, -> 150
+	//
 }
