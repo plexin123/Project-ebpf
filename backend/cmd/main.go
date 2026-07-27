@@ -262,9 +262,9 @@ func main() {
 		if !ok {
 			continue
 		}
-		// getting the current_window
-		// validating that if its exceeds the threshold
-		// obtaining the p95
+		if map_of_functions[funcName] == nil {
+			map_of_functions[funcName] = &FunctionStats{FunctionName: funcName}
+		}
 		current_window := map_of_functions[funcName].Window
 		new_window := append(current_window, event.DurationsNS)
 		validated_window := validateWindow(new_window)
@@ -277,8 +277,7 @@ func main() {
 			if map_of_functions[funcName].baselineflag == false {
 				map_of_functions[funcName].baselinep95 = currentbaselinep95
 				map_of_functions[funcName].baselineflag = true
-			}
-			if map_of_functions[funcName].baselineflag {
+			} else if map_of_functions[funcName].baselineflag {
 				drift := float64(currentbaselinep95-baselinep95) / float64(baselinep95)
 				if drift > 0.2 {
 					fmt.Printf("⚠ regression: %s baseline=%dms current=%dms +%.0f%%\n",
@@ -287,7 +286,7 @@ func main() {
 			}
 
 			map_of_functions[funcName].Window = validated_window
-			fmt.Printf("func: a%-40s  duration: %dms p95: %d\n", funcName, event.DurationsNS/1_000_000)
+			fmt.Printf("func: a%-40s  duration: %dms\n", funcName, event.DurationsNS/1_000_000)
 		}
 	}
 	// func 10

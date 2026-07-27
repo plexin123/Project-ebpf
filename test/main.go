@@ -2,34 +2,49 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
-	"math"
-
 )
+
+var flag bool = false
 
 func handleRequest() {
 	ms := rand.Intn(100) + 10
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
 
-func handleRequestB(){
+func handleRequestB() {
 	ms := rand.Intn(100) + 10
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
 
-func operation(a , b float64){
-	result := math.Pow(a,b)  
+func handleRequestC() {
+	if flag {
+		ms := rand.Intn(1000) + 10
+
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
+
+	ms := rand.Intn(100) + 10
+
+	time.Sleep(time.Duration(ms) * time.Millisecond)
+
+}
+
+func operation(a, b float64) {
+	result := math.Pow(a, b)
 	fmt.Println(result)
 	time.Sleep(time.Duration(10) * time.Millisecond)
 }
 
 func main() {
 	fmt.Print("This is a test")
+	go func() {
+		time.Sleep(time.Duration(4) * time.Millisecond)
+		flag = true
+	}()
 	for {
-		handleRequest()
-		handleRequestB()
-		operation(1000,2000)
-		fmt.Println("its being handle")
+		handleRequestC()
 	}
 }
