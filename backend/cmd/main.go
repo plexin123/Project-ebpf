@@ -12,11 +12,12 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-
+	"golang.org/x/arch/arm64/arm64asm"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"slices"
 )
 
 // Latency time for each functionality
@@ -99,6 +100,10 @@ type Latency_event struct {
 	Name_of_process [16]byte
 }
 
+
+
+
+
 // for each functionality there is going to be an average
 // func_name - avg = (time end - time start) // amount of calls, amount of calls
 // left pointer starting with the first average time
@@ -124,9 +129,10 @@ func p95(window []uint64) uint64 {
 	sorted := make([]uint64, len(window))
 	copy(sorted, window)
 	// do operation -> 95 // size(window)
+	slices.Sort(sorted)
 	index_of_95 := int(float64(len(window)) * 0.95)
 	// sorted_value[ans]
-	value := window[index_of_95]
+	value := sorted[index_of_95]
 	// return a
 	return value
 }
@@ -138,6 +144,24 @@ func validateWindow(window []uint64) []uint64 {
 	}
 	return window
 }
+
+func findRetOffsets(data []byte) []uint64 {
+	var offsets []uint64
+	offset := 0
+	for offset + 4 <=  len(data) {
+		inst, err := arm64asm.Decode(data[offset: offset+4])
+		if err != nil {
+			offset += 4
+			continue
+		}
+		if inst.Op == arm64asm.RET {
+			offsets = append(offsets, uint64(offset))
+		}
+		offset += 4
+	}
+	return offsets
+}	
+
 
 func main() {
 	if err := rlimit.RemoveMemlock(); err != nil {
@@ -203,15 +227,14 @@ func main() {
 			continue
 		}
 
-		ret, err := ex.Uretprobe(sym.Name, coll.Programs["trace_exit"], nil)
+		ret,err := ex.Uretprobe(sym.Name, coll.Programs["trace_exit"],nil)
 
-		if err != nil {
+		if err != nil{
 			up.Close()
 			continue
 		}
 
-		links = append(links, up, ret)
-
+		links = append(links, up, ret)	
 		register_map[sym.Value] = sym.Name
 		map_of_functions[sym.Name] = &FunctionStats{
 			FunctionName: sym.Name,
@@ -257,9 +280,11 @@ func main() {
 			log.Printf("Failed to parse event: %v", err)
 			continue
 		}
-
+		fmt.Printf("[RAW EVENT] PID: %d | MemPtr: 0x%x | Duration: %dns\n", 
+		        event.PID, event.MemoryPointer, event.DurationsNS)
 		funcName, ok := register_map[event.MemoryPointer]
 		if !ok {
+			fmt.Printf("MemoryPointer 0x%x not found in register_map!\n", event.MemoryPointer)
 			continue
 		}
 		if map_of_functions[funcName] == nil {
@@ -267,10 +292,13 @@ func main() {
 		}
 		current_window := map_of_functions[funcName].Window
 		new_window := append(current_window, event.DurationsNS)
-		validated_window := validateWindow(new_window)
-		if len(validated_window) >= 20 {
+		map_of_functions[funcName].Window = validateWindow(new_window)
 
-			currentbaselinep95 := p95(validated_window)
+		fmt.Printf("EVENT RECV -> func: %-20s duration: %dms (window size: %d)\n",
+	funcName, event.DurationsNS/1_000_000, len(map_of_functions[funcName].Window))
+		if len(map_of_functions[funcName].Window) >= 7 {
+
+			currentbaselinep95 := p95(map_of_functions[funcName].Window)
 
 			baselinep95 := map_of_functions[funcName].baselinep95
 
@@ -278,14 +306,13 @@ func main() {
 				map_of_functions[funcName].baselinep95 = currentbaselinep95
 				map_of_functions[funcName].baselineflag = true
 			} else if map_of_functions[funcName].baselineflag {
-				drift := float64(currentbaselinep95-baselinep95) / float64(baselinep95)
-				if drift > 0.2 {
+				drift := (float64(currentbaselinep95)-float64(baselinep95)) / float64(baselinep95)
+				if drift > 0.00005 {
 					fmt.Printf("⚠ regression: %s baseline=%dms current=%dms +%.0f%%\n",
 						funcName, baselinep95/1_000_000, currentbaselinep95/1_000_000, drift*100)
 				}
 			}
 
-			map_of_functions[funcName].Window = validated_window
 			fmt.Printf("func: a%-40s  duration: %dms\n", funcName, event.DurationsNS/1_000_000)
 		}
 	}

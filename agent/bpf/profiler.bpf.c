@@ -28,7 +28,7 @@ int trace_exit(struct pt_regs *ctx){
     }
     __u64 duration = bpf_ktime_get_ns() - *ts;
     bpf_map_delete_elem(&start_times, &pid);
-
+    bpf_map_delete_elem(&memory_map, &pid);
     struct latency_event *event = bpf_ringbuf_reserve(&events, sizeof(struct latency_event), 0);
 
     
