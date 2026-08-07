@@ -31,6 +31,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("There has been an error: %v", err)
 		return
 	}
+	fmt.Printf("Client connected: %v", c.RemoteAddr())
 	defer c.Close()
 	// client is connected to the websocket server then send data
 	connectionMu.Lock()
