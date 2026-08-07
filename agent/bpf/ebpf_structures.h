@@ -18,7 +18,7 @@ struct process_event {
 struct latency_event{
     __u64 durations_ns;
     __u64 memory_id;
-    __u32 pid;
+    __u64 pid_tgid;
     char name_of_process[16];
 };
 #endif
@@ -33,7 +33,21 @@ struct {
 } memory_map SEC(".maps");
 #endif
 
+#ifndef __ENTER_EVENT
+#define __ENTER_EVENT
+struct enter_event{
+    __u64 pid_tgid;
+    __u64 func_address;
+};
+#endif
 
+#ifndef __RING_BUFFER_ENTER_H
+#define __RING_BUFFER_ENTER_H
+struct{
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 24);
+} enter_events SEC(".maps");
+#endif
 
 /* ring buffer map
     template pattern 

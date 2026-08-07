@@ -9,130 +9,25 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
-	"golang.org/x/arch/arm64/arm64asm"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"slices"
 )
-
-// Latency time for each functionality
-// Keep it 1 function
-// compile one test golang file
-// run it against the lumentrace -> see function how long does it take
-
-// type ProcessEvent struct {
-// 	PID  uint32
-// 	PPID uint32
-// 	Comm [16]byte
-// }
-
-// func main() {
-
-// 	spec, err := ebpf.LoadCollectionSpec("monitor.bpf.o")
-
-// 	if err != nil {
-// 		log.Fatalf("failed to load eBPF spec: %v", err)
-// 	}
-
-// 	coll, err := ebpf.NewCollection(spec)
-
-// 	if err != nil {
-// 		log.Fatalf("failed to create collection %v", err)
-// 	}
-
-// 	defer coll.Close()
-
-// 	tp, err := link.Tracepoint("syscalls", "sys_enter_execve", coll.Programs["new_program"], nil)
-
-// 	if err != nil {
-// 		log.Fatalf("failed to attach tracepoint %v", err)
-// 	}
-
-// 	defer tp.Close()
-
-// 	reader, err := ringbuf.NewReader(coll.Maps["events"])
-
-// 	if err != nil {
-// 		log.Fatalf("failed to create a new reader %v", err)
-// 	}
-
-// 	defer reader.Close()
-
-// 	sig := make(chan os.Signal, 1)
-
-// 	signal.Notify(sig, os.Interrupt)
-
-// 	go func() {
-// 		<-sig
-// 		reader.Close()
-// 	}()
-
-// 	for {
-// 		record, err := reader.Read()
-
-// 		if err != nil {
-// 			break
-// 		}
-
-// 		var event ProcessEvent
-
-// 		if err := binary.Read(bytes.NewReader(record.RawSample), binary.LittleEndian, &event); err != nil {
-// 			continue
-// 		}
-// 		name := string(bytes.TrimRight(event.Comm[:], "\x00"))
-
-// 		fmt.Printf("pid: %-6d  ppid: %-6d  comm: %s\n", event.PID, event.PPID, name)
-
-// 	}
-
-// }
-
-type Latency_event struct {
-	DurationsNS     uint64
-	MemoryPointer   uint64
-	PID             uint32
-	_               [4]byte
-	Name_of_process [16]byte
-}
-
-
-
-
-
-// for each functionality there is going to be an average
-// func_name - avg = (time end - time start) // amount of calls, amount of calls
-// left pointer starting with the first average time
-// "average_time" : (average_time + DurationNS) / amount_of_calls
-// "amount_calls" : amount_of_calls
-// // for each func_name ->{
-// 		"array_of_time": [times],
-// 		"left_pointer" : 0
-// 		"amount_calls" : 0
-// }
-
-type FunctionStats struct {
-	FunctionName string
-	Window       []uint64
-	baselineflag bool
-	baselinep95  uint64
-}
-
-// map -> each fuction will have the struct FunctionStats
 
 func p95(window []uint64) uint64 {
 	// sort the value
 	sorted := make([]uint64, len(window))
 	copy(sorted, window)
 	// do operation -> 95 // size(window)
-	slices.Sort(sorted)
 	index_of_95 := int(float64(len(window)) * 0.95)
 	// sorted_value[ans]
-	value := sorted[index_of_95]
+	value := window[index_of_95]
 	// return a
 	return value
 }
@@ -145,26 +40,46 @@ func validateWindow(window []uint64) []uint64 {
 	return window
 }
 
-func findRetOffsets(data []byte) []uint64 {
-	var offsets []uint64
-	offset := 0
-	for offset + 4 <=  len(data) {
-		inst, err := arm64asm.Decode(data[offset: offset+4])
-		if err != nil {
-			offset += 4
-			continue
-		}
-		if inst.Op == arm64asm.RET {
-			offsets = append(offsets, uint64(offset))
-		}
-		offset += 4
-	}
-	return offsets
-}	
+var map_pid_gid_stack = make(map[uint64][]string)
 
+func handleEnterEvent(pid_gid uint64, funcName string) {
+	get_current_stack := map_pid_gid_stack[pid_gid]
+
+	if len(get_current_stack) > 1 {
+		current_father := get_current_stack[len(get_current_stack)-1]
+		broadcast(CallEvent{Caller: current_father, Callee: funcName})
+	}
+	get_current_stack = append(get_current_stack, funcName)
+
+}
+func handleExitEvent(pid_gid uint64) {
+	get_current_stack := map_pid_gid_stack[pid_gid]
+	if len(get_current_stack) > 0 {
+		map_pid_gid_stack[pid_gid] = get_current_stack[:len(get_current_stack)-1]
+	}
+
+}
 
 func main() {
+
+	http.HandleFunc("/ws", handleWS)
+
+	fmt.Printf("Websocket server starting.. on 8080")
+
+	go func() {
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Printf("websocket server failed %v", err)
+		}
+	}()
+
+	if err := collector(); err != nil {
+		log.Fatalf("collector failed %v", err)
+	}
+}
+
+func collector() error {
 	if err := rlimit.RemoveMemlock(); err != nil {
+
 		log.Fatalf("failed to remove memlock: %v", err)
 	}
 	if len(os.Args) < 2 {
@@ -227,14 +142,15 @@ func main() {
 			continue
 		}
 
-		ret,err := ex.Uretprobe(sym.Name, coll.Programs["trace_exit"],nil)
+		ret, err := ex.Uretprobe(sym.Name, coll.Programs["trace_exit"], nil)
 
-		if err != nil{
+		if err != nil {
 			up.Close()
 			continue
 		}
 
-		links = append(links, up, ret)	
+		links = append(links, up, ret)
+
 		register_map[sym.Value] = sym.Name
 		map_of_functions[sym.Name] = &FunctionStats{
 			FunctionName: sym.Name,
@@ -256,6 +172,11 @@ func main() {
 
 	defer reader.Close()
 
+	enterReader, err := ringbuf.NewReader(coll.Maps["enter_events"])
+	if err != nil {
+		log.Fatalf("failed to openr ring buffer: %v", err)
+	}
+
 	sig := make(chan os.Signal, 1)
 
 	signal.Notify(sig, os.Interrupt)
@@ -263,10 +184,33 @@ func main() {
 	go func() {
 		<-sig
 		reader.Close()
+		enterReader.Close()
+	}()
+
+	go func() {
+		for {
+			record, err := enterReader.Read()
+			if err != nil {
+				break
+			}
+			var enterEvt EnterEvent
+			if err := binary.Read(
+				bytes.NewReader(record.RawSample),
+				binary.LittleEndian,
+				&enterEvt,
+			); err != nil {
+				log.Printf("Failed to parse enter event %v", err)
+				continue
+			}
+			funcName, ok := register_map[enterEvt.FuncAddress]
+			if !ok {
+				continue
+			}
+			handleEnterEvent(enterEvt.PidTgid, funcName)
+		}
 	}()
 
 	for {
-
 		record, err := reader.Read()
 		if err != nil {
 			break
@@ -280,11 +224,10 @@ func main() {
 			log.Printf("Failed to parse event: %v", err)
 			continue
 		}
-		fmt.Printf("[RAW EVENT] PID: %d | MemPtr: 0x%x | Duration: %dns\n", 
-		        event.PID, event.MemoryPointer, event.DurationsNS)
+
 		funcName, ok := register_map[event.MemoryPointer]
+		handleExitEvent(event.PidTgid)
 		if !ok {
-			fmt.Printf("MemoryPointer 0x%x not found in register_map!\n", event.MemoryPointer)
 			continue
 		}
 		if map_of_functions[funcName] == nil {
@@ -292,35 +235,40 @@ func main() {
 		}
 		current_window := map_of_functions[funcName].Window
 		new_window := append(current_window, event.DurationsNS)
-		map_of_functions[funcName].Window = validateWindow(new_window)
+		validated_window := validateWindow(new_window)
 
-		fmt.Printf("EVENT RECV -> func: %-20s duration: %dms (window size: %d)\n",
-	funcName, event.DurationsNS/1_000_000, len(map_of_functions[funcName].Window))
-		if len(map_of_functions[funcName].Window) >= 7 {
+		if len(validated_window) >= 20 {
 
-			currentbaselinep95 := p95(map_of_functions[funcName].Window)
+			currentbaselinep95 := p95(validated_window)
 
 			baselinep95 := map_of_functions[funcName].baselinep95
+
+			event_data := FunctionEvent{
+				FuncName: funcName,
+				Duration: event.DurationsNS,
+				Current:  currentbaselinep95,
+			}
 
 			if map_of_functions[funcName].baselineflag == false {
 				map_of_functions[funcName].baselinep95 = currentbaselinep95
 				map_of_functions[funcName].baselineflag = true
-			} else if map_of_functions[funcName].baselineflag {
-				drift := (float64(currentbaselinep95)-float64(baselinep95)) / float64(baselinep95)
-				if drift > 0.00005 {
-					fmt.Printf("⚠ regression: %s baseline=%dms current=%dms +%.0f%%\n",
-						funcName, baselinep95/1_000_000, currentbaselinep95/1_000_000, drift*100)
+				event_data.Status = StatusBaselineSet
+				event_data.Baseline = currentbaselinep95
+			} else {
+				drift := float64(currentbaselinep95-baselinep95) / float64(baselinep95)
+				event_data.Baseline = baselinep95
+				event_data.DriftPct = drift * 100
+				if drift > 0.2 {
+					event_data.Status = StatusRegression
+				} else {
+					event_data.Status = StatusOk
 				}
-			}
 
-			fmt.Printf("func: a%-40s  duration: %dms\n", funcName, event.DurationsNS/1_000_000)
+			}
+			map_of_functions[funcName].Window = validated_window
+			broadcast(event_data)
 		}
 	}
-	// func 10
-	// func 20
-	// use function name
-	// [20, 30, 10, 40, 50, 29]
-	// [10,20,29,30,40,500000,] ->40
-	// 40,100,120,140,150,100, -> 150
-	//
+
+	return nil
 }

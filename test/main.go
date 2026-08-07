@@ -8,6 +8,7 @@ import (
 )
 
 var regressionFlag atomic.Bool
+
 //go:noinline
 func handleRequestA() {
 	ms := rand.Intn(10) + 5
@@ -42,7 +43,3 @@ func main() {
 		handleRequestC()
 	}
 }
-
-
-
-
