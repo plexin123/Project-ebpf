@@ -41,10 +41,12 @@ func broadcast(data any) {
 	connectionMu.Lock()
 	defer connectionMu.Unlock()
 	for conn := range connectionMap {
+		fmt.Printf("Sending data %v \n", data)
 		if err := conn.WriteJSON(data); err != nil {
 			fmt.Printf("There has been an error %v \n", err)
 			conn.Close()
 			delete(connectionMap, conn)
 		}
+		fmt.Printf("Data has been sent successfully: %v \n", data)
 	}
 }
