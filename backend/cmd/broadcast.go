@@ -29,12 +29,25 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Printf("There has been an error: %v", err)
+		return
 	}
 	defer c.Close()
 	// client is connected to the websocket server then send data
 	connectionMu.Lock()
 	connectionMap[c] = true
 	connectionMu.Unlock()
+
+	defer func() {
+		connectionMu.Lock()
+		delete(connectionMap, c)
+		connectionMu.Unlock()
+	}()
+
+	for {
+		if _, _, err := c.ReadMessage(); err != nil {
+			break
+		}
+	}
 }
 
 func broadcast(data any) {

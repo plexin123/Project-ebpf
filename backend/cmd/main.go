@@ -245,7 +245,7 @@ func collector() error {
 		new_window := append(current_window, event.DurationsNS)
 		validated_window := validateWindow(new_window)
 		fmt.Printf("SENDING_DATA_PAUL")
-		if len(validated_window) >= 20 {
+		if len(validated_window) >= 2 {
 
 			currentbaselinep95 := p95(validated_window)
 
