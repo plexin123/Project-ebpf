@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -41,8 +42,11 @@ func validateWindow(window []uint64) []uint64 {
 }
 
 var map_pid_gid_stack = make(map[uint64][]string)
+var stack_mu sync.Mutex
 
 func handleEnterEvent(pid_gid uint64, funcName string) {
+	stack_mu.Lock()
+	defer stack_mu.Unlock()
 	get_current_stack := map_pid_gid_stack[pid_gid]
 
 	if len(get_current_stack) > 1 {
@@ -50,9 +54,13 @@ func handleEnterEvent(pid_gid uint64, funcName string) {
 		broadcast(CallEvent{Caller: current_father, Callee: funcName})
 	}
 	get_current_stack = append(get_current_stack, funcName)
+	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
+	map_pid_gid_stack[pid_gid] = get_current_stack
 
 }
 func handleExitEvent(pid_gid uint64) {
+	stack_mu.Lock()
+	defer stack_mu.Unlock()
 	get_current_stack := map_pid_gid_stack[pid_gid]
 	if len(get_current_stack) > 0 {
 		map_pid_gid_stack[pid_gid] = get_current_stack[:len(get_current_stack)-1]
