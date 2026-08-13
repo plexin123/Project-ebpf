@@ -8,8 +8,9 @@ type Latency_event struct {
 }
 
 type CallEvent struct {
-	Caller string `json:"caller"`
-	Callee string `json:"callee"`
+	TraceId string `json:"trace_id"`
+	Caller  string `json:"caller"`
+	Callee  string `json:"callee"`
 }
 
 type EnterEvent struct {

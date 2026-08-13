@@ -19,6 +19,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/google/uuid"
 )
 
 func p95(window []uint64) uint64 {
@@ -42,20 +43,29 @@ func validateWindow(window []uint64) []uint64 {
 }
 
 var map_pid_gid_stack = make(map[uint64][]string)
+var map_trace_id = make(map[uint64]uuid.UUID)
 var stack_mu sync.Mutex
 
 func handleEnterEvent(pid_gid uint64, funcName string) {
 	stack_mu.Lock()
 	defer stack_mu.Unlock()
 	get_current_stack := map_pid_gid_stack[pid_gid]
-
-	if len(get_current_stack) > 1 {
-		current_father := get_current_stack[len(get_current_stack)-1]
-		broadcast(CallEvent{Caller: current_father, Callee: funcName})
-	}
 	get_current_stack = append(get_current_stack, funcName)
-	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
 	map_pid_gid_stack[pid_gid] = get_current_stack
+	if len(get_current_stack) > 1 {
+		current_father := get_current_stack[len(get_current_stack)-2]
+		current_trace_id := map_trace_id[pid_gid]
+		// database insertion
+		broadcast(CallEvent{TraceId: current_trace_id.String(), Caller: current_father, Callee: funcName})
+	}
+	if len(get_current_stack) == 1 {
+		new_generated_trace_id, err := uuid.NewRandom()
+		if err != nil {
+			fmt.Printf("There has been an error generating, %v", err)
+		}
+		map_trace_id[pid_gid] = new_generated_trace_id
+	}
+	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
 
 }
 func handleExitEvent(pid_gid uint64) {
@@ -64,6 +74,9 @@ func handleExitEvent(pid_gid uint64) {
 	get_current_stack := map_pid_gid_stack[pid_gid]
 	if len(get_current_stack) > 0 {
 		map_pid_gid_stack[pid_gid] = get_current_stack[:len(get_current_stack)-1]
+	}
+	if len(map_pid_gid_stack[pid_gid]) == 0 {
+		delete(map_trace_id, pid_gid)
 	}
 
 }
@@ -124,7 +137,7 @@ func collector() error {
 	}
 	syms, err := f.Symbols()
 	if err != nil {
-		log.Fatalf("faled to read symbols: %v", err)
+		log.Fatalf("failed to read symbols: %v", err)
 	}
 	f.Close()
 
