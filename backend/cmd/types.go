@@ -18,6 +18,11 @@ type EnterEvent struct {
 	FuncAddress uint64
 }
 
+type WsMessage struct {
+	Type    string `json:"name"`
+	Payload any    `json:"payload"`
+}
+
 type FunctionStats struct {
 	FunctionName string
 	Window       []uint64

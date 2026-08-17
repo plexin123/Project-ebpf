@@ -56,7 +56,7 @@ func handleEnterEvent(pid_gid uint64, funcName string) {
 		current_father := get_current_stack[len(get_current_stack)-2]
 		current_trace_id := map_trace_id[pid_gid]
 		// database insertion
-		broadcast(CallEvent{TraceId: current_trace_id.String(), Caller: current_father, Callee: funcName})
+		broadcast(WsMessage{Type: "connection", Payload: CallEvent{TraceId: current_trace_id.String(), Caller: current_father, Callee: funcName}})
 	}
 	if len(get_current_stack) == 1 {
 		new_generated_trace_id, err := uuid.NewRandom()
@@ -227,6 +227,7 @@ func collector() error {
 			if !ok {
 				continue
 			}
+
 			handleEnterEvent(enterEvt.PidTgid, funcName)
 		}
 	}()
@@ -287,7 +288,7 @@ func collector() error {
 
 			}
 			map_of_functions[funcName].Window = validated_window
-			broadcast(event_data)
+			broadcast(WsMessage{Type: "event", Payload: event_data})
 		}
 	}
 
