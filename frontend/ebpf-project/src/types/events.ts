@@ -9,6 +9,8 @@ type GraphState = {
   node: Map<string, FunctionEvent[]>;
 };
 
+dictionary: Map<number, GraphState> = new Map();
+
 type FunctionEvent = {
   funcName: string;
   duration: number;
