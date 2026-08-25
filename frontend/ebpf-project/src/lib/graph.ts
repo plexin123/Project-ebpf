@@ -1,5 +1,7 @@
+import type { CallEvent, FunctionEvent } from '../types/events'
+import type { TracesState } from '../state/graphReduce'
 
-    function add_edge(state: TraceState , callEvent: CallEvent) : TraceState{
+    export function add_edge(state: TracesState , callEvent: CallEvent) : TracesState{
         const newState = new Map(state)
         let currentGraphState =  newState.get(callEvent.traceId)
         if (!currentGraphState){
@@ -17,7 +19,7 @@
             newState.set(callEvent.traceId, currentGraphState)
         }
         let father = callEvent.caller
-        let children =callEvent.calle
+        let children = callEvent.callee
         if (!currentGraphState.edges.get(father)){
             currentGraphState.edges.set(father, [])
         }
@@ -30,7 +32,7 @@
     }
 
 
-    function upsert_node(state: TraceState, functionEvent: FunctionEvent, traceId: number): TraceState{
+    export function upsert_node(state: TracesState, functionEvent: FunctionEvent, traceId: string): TracesState{
         const newState = new Map(state)
         let currentGraphState =  newState.get(traceId)
         if (!currentGraphState){

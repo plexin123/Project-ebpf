@@ -1,28 +1,19 @@
-type CallEvent = {
-  traceId: number;
+export type CallEvent = {
+  traceId: string;
   caller: string;
-  calle: string;
+  callee: string;
 };
 
-type GraphState = {
-  edges: Map<string, string[]>;
-  node: Map<string, FunctionEvent[]>;
-};
-
-dictionary: Map<number, GraphState> = new Map();
-
-type FunctionEvent = {
+export type FunctionEvent = {
   funcName: string;
   duration: number;
-  baseline: number  ;
+  baseline: number;
   current: number;
-  driftpct: number | undefined;
-  status: "BaselineSet" | "Regression" | "Ok";
+  driftPct: number;
+  status: "ok" | "baseline_set" | "regression";
 };
 
-type WSMessage = {
+export type WSMessage = {
   type: string;
   payload: FunctionEvent | CallEvent;
 };
-
-
