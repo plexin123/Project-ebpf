@@ -21,6 +21,10 @@
         if (!currentGraphState.edges.get(father)){
             currentGraphState.edges.set(father, [])
         }
+        else{
+            const listChildren = Array.from(currentGraphState.edges.get(father)!)
+            currentGraphState.edges.set(father, listChildren)
+        }
         currentGraphState.edges.get(father)?.push(children)
         return newState
     }
@@ -46,6 +50,10 @@
         let funcName =  functionEvent.funcName
         if (!currentGraphState.node.get(funcName)){
             currentGraphState.node.set(funcName, [])
+        }
+        else{
+            const listEvent = Array.from(currentGraphState.node.get(funcName)!)
+            currentGraphState.node.set(funcName, listEvent)
         }
         currentGraphState.node.get(funcName)?.push(functionEvent)
         return newState
