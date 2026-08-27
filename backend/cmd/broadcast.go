@@ -52,6 +52,7 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func broadcast(data any) {
+	// creating a new struct
 	connectionMu.Lock()
 	defer connectionMu.Unlock()
 	fmt.Printf("map of connections %v ", connectionMap)

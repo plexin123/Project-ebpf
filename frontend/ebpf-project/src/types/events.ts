@@ -1,5 +1,4 @@
 export type CallEvent = {
-  traceId: string;
   caller: string;
   callee: string;
 };
@@ -16,4 +15,5 @@ export type FunctionEvent = {
 export type WSMessage = {
   type: string;
   payload: FunctionEvent | CallEvent;
+  traceId : string
 };

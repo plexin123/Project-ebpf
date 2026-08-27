@@ -8,9 +8,8 @@ type Latency_event struct {
 }
 
 type CallEvent struct {
-	TraceId string `json:"trace_id"`
-	Caller  string `json:"caller"`
-	Callee  string `json:"callee"`
+	Caller string `json:"caller"`
+	Callee string `json:"callee"`
 }
 
 type EnterEvent struct {
@@ -21,6 +20,7 @@ type EnterEvent struct {
 type WsMessage struct {
 	Type    string `json:"name"`
 	Payload any    `json:"payload"`
+	TraceId string `json:"traceId"`
 }
 
 type FunctionStats struct {

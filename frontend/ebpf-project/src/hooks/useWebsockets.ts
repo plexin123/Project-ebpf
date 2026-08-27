@@ -4,7 +4,7 @@ import { discriminator } from "../lib/parser"
 // by default it has used the input given in the UI
 const DEFAULT_URL = "http://192.168.110.128:8080/ws"
 
-export function WebsocketConnectionEntrance(url: string, onReceivedMessage: (ws_message : WSMessage | FunctionEvent |CallEvent | null ) => any){
+export function WebsocketConnectionEntrance(url: string, onReceivedMessage: (ws_message: WSMessage | null ) => any){
     const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
     const ws = useRef<WebSocket | null>(null)
 
@@ -14,12 +14,14 @@ export function WebsocketConnectionEntrance(url: string, onReceivedMessage: (ws_
         current_ws.onopen = () => {
             setStatus("open")
         }
-
-        current_ws.onmessage = (ws_message) =>{
-            const parsedMessage =  JSON.parse(ws_message.data)
-            const actualMessage = discriminator(parsedMessage)
-            if (actualMessage){
-                 onReceivedMessage(actualMessage)
+        // receiving the message open websocket
+        current_ws.onmessage = (ws_message_event) =>{
+            const parsedMessage : WSMessage =  JSON.parse(ws_message_event.data)
+            console.log(parsedMessage)
+            // const actualMessage = discriminator(parsedMessage)
+            // console.log(actualMessage)
+            if (parsedMessage){
+                 onReceivedMessage(parsedMessage)
             }
         
         }
