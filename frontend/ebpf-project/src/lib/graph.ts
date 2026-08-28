@@ -1,22 +1,22 @@
 import type { CallEvent, FunctionEvent } from '../types/events'
 import type { TracesState } from '../state/graphReduce'
 
-    export function add_edge(state: TracesState , callEvent: CallEvent) : TracesState{
+    export function add_edge(state: TracesState , callEvent: CallEvent, traceId: string) : TracesState{
         const newState = new Map(state)
-        let currentGraphState =  newState.get(callEvent.traceId)
+        let currentGraphState =  newState.get(traceId)
         if (!currentGraphState){
             currentGraphState = {
                 edges: new Map<string, string[]>(),
                 node: new Map<string, FunctionEvent[]>()
             }
-            newState.set(callEvent.traceId, currentGraphState)
+            newState.set(traceId, currentGraphState)
         }
         else {
               currentGraphState = {
                 edges : new Map(currentGraphState.edges),
                 node : new Map(currentGraphState.node)
             }
-            newState.set(callEvent.traceId, currentGraphState)
+            newState.set(traceId, currentGraphState)
         }
         let father = callEvent.caller
         let children = callEvent.callee

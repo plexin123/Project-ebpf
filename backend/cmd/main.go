@@ -46,7 +46,7 @@ var map_pid_gid_stack = make(map[uint64][]string)
 var map_trace_id = make(map[uint64]uuid.UUID)
 var stack_mu sync.Mutex
 
-func handleEnterEvent(pid_gid uint64, funcName string, traceId uuid.UUID) {
+func handleEnterEvent(pid_gid uint64, funcName string) {
 	stack_mu.Lock()
 	defer stack_mu.Unlock()
 	get_current_stack := map_pid_gid_stack[pid_gid]
@@ -58,6 +58,10 @@ func handleEnterEvent(pid_gid uint64, funcName string, traceId uuid.UUID) {
 		broadcast(WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
 	}
 	if len(get_current_stack) == 1 {
+		traceId, err := uuid.NewRandom()
+		if err != nil {
+			log.Fatalf("Failed to create traceId %v", err)
+		}
 		map_trace_id[pid_gid] = traceId
 	}
 	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
@@ -203,12 +207,6 @@ func collector() error {
 		enterReader.Close()
 	}()
 
-	traceId, err := uuid.NewRandom()
-
-	if err != nil {
-		log.Fatalf("Failed to generate a traceId, %v", err)
-	}
-
 	go func() {
 		for {
 			record, err := enterReader.Read()
@@ -229,7 +227,7 @@ func collector() error {
 				continue
 			}
 
-			handleEnterEvent(enterEvt.PidTgid, funcName, traceId)
+			handleEnterEvent(enterEvt.PidTgid, funcName)
 		}
 	}()
 
@@ -249,6 +247,7 @@ func collector() error {
 		}
 
 		funcName, ok := register_map[event.MemoryPointer]
+		currentTraceId := map_trace_id[event.PidTgid]
 		handleExitEvent(event.PidTgid)
 		if !ok {
 			continue
@@ -289,7 +288,7 @@ func collector() error {
 
 			}
 			map_of_functions[funcName].Window = validated_window
-			broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: traceId.String()})
+			broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 		}
 	}
 

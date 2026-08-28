@@ -25,7 +25,7 @@ function Dashboard() {
             case("connection"):
                 let callEvent: CallEvent = ws_message.payload as CallEvent
                 dispatch({type: 'ADD_EDGE', payload: callEvent, traceId: ws_message.traceId })
-            
+                
             case("event"):
                 let functionEvent : FunctionEvent = ws_message.payload as FunctionEvent
                 dispatch({type: 'UPSERT_NODE' , payload: functionEvent , traceId: ws_message.traceId })
