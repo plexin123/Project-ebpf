@@ -3,7 +3,7 @@ import{
 } from 'react'
 import {tracesReducer, initialTracesState, type TracesState, type GraphAction } from './graphReduce'
 
-type GraphContextValue = {
+export type GraphContextValue = {
     traces: TracesState
     dispatch: React.Dispatch<GraphAction>
 }
