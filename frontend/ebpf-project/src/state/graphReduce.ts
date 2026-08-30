@@ -16,7 +16,7 @@ export const initialTracesState: TracesState = new Map()
 
 export function tracesReducer(state: TracesState, action: GraphAction): TracesState {
     switch (action.type) {
-        case 'ADD_EDGE': return add_edge(state, action.payload , action.traceId)
+        case 'ADD_EDGE': return add_edge(state, action.payload , action.traceId )
         case 'UPSERT_NODE': return upsert_node(state, action.payload, action.traceId)
     }
 }
