@@ -18,7 +18,7 @@ type EnterEvent struct {
 }
 
 type WsMessage struct {
-	Type    string `json:"name"`
+	Type    string `json:"type"`
 	Payload any    `json:"payload"`
 	TraceId string `json:"traceId"`
 }
