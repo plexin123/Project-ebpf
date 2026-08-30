@@ -1,0 +1,133 @@
+.dashboard {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.dashboard-header h1 {
+  font-family: var(--heading);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.status-pill {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+}
+
+.status-pill.status-open {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent-ink);
+}
+
+.status-pill.status-error,
+.status-pill.status-closed {
+  border-color: var(--critical);
+  background: var(--critical-bg);
+  color: var(--critical);
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1.2rem 1.3rem 1.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.panel h2 {
+  font-family: var(--heading);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0 0 0.9rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding: 0 0.6rem 0.5rem 0;
+}
+
+td {
+  padding: 0.5rem 0.6rem 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-h);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover td {
+  background: var(--code-bg);
+}
+
+td.mono {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+td.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.empty-row td {
+  color: var(--text);
+  font-style: italic;
+}
+
+.badge {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.badge-ok {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.badge-baseline_set {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.badge-regression {
+  color: var(--critical);
+  background: var(--critical-bg);
+}

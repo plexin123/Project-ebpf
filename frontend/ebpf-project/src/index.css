@@ -1,22 +1,31 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
+  --text: #5b6472;
+  --text-h: #1b2028;
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --border: #d3dae1;
+  --code-bg: #e4e9ee;
+  --accent: #b96a2c;
+  --accent-ink: #7a4419;
+  --accent-bg: rgba(185, 106, 44, 0.12);
+  --accent-border: rgba(185, 106, 44, 0.4);
+  --ok: #3f7a4f;
+  --ok-bg: rgba(63, 122, 79, 0.14);
+  --warn: #a17a1f;
+  --warn-bg: rgba(161, 122, 31, 0.14);
+  --critical: #b5432f;
+  --critical-bg: rgba(181, 67, 47, 0.14);
+  --edge: #c3ccd4;
+  --edge-pulse: #2f8fbf;
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: 'IBM Plex Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+  font: 16px/145% var(--sans);
+  letter-spacing: 0.1px;
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
@@ -24,29 +33,39 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
+    --text: #8b93a3;
+    --text-h: #e9e6df;
+    --bg: #12151c;
+    --surface: #1a1f29;
+    --border: #2a3140;
+    --code-bg: #202634;
+    --accent: #d98e4a;
+    --accent-ink: #f0b578;
+    --accent-bg: rgba(217, 142, 74, 0.14);
+    --accent-border: rgba(217, 142, 74, 0.4);
+    --ok: #7fbf8f;
+    --ok-bg: rgba(127, 191, 143, 0.14);
+    --warn: #dcb256;
+    --warn-bg: rgba(220, 178, 86, 0.14);
+    --critical: #e17a63;
+    --critical-bg: rgba(225, 122, 99, 0.16);
+    --edge: #2C4A5C;
+    --edge-pulse: #7FE7FF;
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
 }
 
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
