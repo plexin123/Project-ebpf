@@ -30,6 +30,8 @@ function shortName(name: string): string {
     return name.replace(/^main\./, '')
 }
 
+const NODE_RADIUS = 16
+
 export function CallGraph({ graphState }: { graphState: GraphState | undefined }) {
     const svgRef = useRef<SVGSVGElement | null>(null)
     const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -41,6 +43,20 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
     // mount: create the simulation and DOM layers once
     useEffect(() => {
         const svg = d3.select(svgRef.current!)
+
+        // flecha para las aristas -- se referencia desde CallGraph.css (marker-end)
+        svg.append('defs').append('marker')
+            .attr('id', 'callgraph-arrow')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 9)
+            .attr('refY', 0)
+            .attr('markerWidth', 7)
+            .attr('markerHeight', 7)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5 L10,0 L0,5')
+            .attr('fill', 'var(--edge)')
+
         const zoomLayer = svg.append('g').attr('class', 'zoom-layer')
         const edgeLayer = zoomLayer.append('g').attr('class', 'edge-layer')
         const nodeLayer = zoomLayer.append('g').attr('class', 'node-layer')
@@ -76,7 +92,15 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
                 .attr('d', d => {
                     const s = d.source as SimNode
                     const t = d.target as SimNode
-                    return `M${s.x ?? 0},${s.y ?? 0} L${t.x ?? 0},${t.y ?? 0}`
+                    const sx = s.x ?? 0, sy = s.y ?? 0
+                    const tx = t.x ?? 0, ty = t.y ?? 0
+                    const dx = tx - sx, dy = ty - sy
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+                    // frenar la línea antes del círculo del nodo destino, para
+                    // que la punta de flecha se vea y no quede tapada
+                    const endX = tx - (dx / dist) * (NODE_RADIUS + 3)
+                    const endY = ty - (dy / dist) * (NODE_RADIUS + 3)
+                    return `M${sx},${sy} L${endX},${endY}`
                 })
             state.nodeLayer.selectAll<SVGGElement, SimNode>('.node-group')
                 .attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)

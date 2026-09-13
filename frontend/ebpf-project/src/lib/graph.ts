@@ -19,15 +19,13 @@ import type { GraphState, TracesState } from '../state/graphReduce'
             newState.set(traceId, currentGraphState)
         }
         let father = callEvent.caller
-        let children = callEvent.callee
-        if (!currentGraphState.edges.get(father)){
-            currentGraphState.edges.set(father, [])
+        let child = callEvent.callee
+        const existingChildren = currentGraphState.edges.get(father) ?? []
+        // edges son relaciones únicas (¿existe esta llamada, sí o no?), no un
+        // historial de ocurrencias -- si ya está, no la duplicamos
+        if (!existingChildren.includes(child)) {
+            currentGraphState.edges.set(father, [...existingChildren, child])
         }
-        else{
-            const listChildren = Array.from(currentGraphState.edges.get(father)!)
-            currentGraphState.edges.set(father, listChildren)
-        }
-        currentGraphState.edges.get(father)?.push(children)
         return newState
     }
 
@@ -84,7 +82,12 @@ export function mergeTraces(traces: TracesState): GraphState {
     for (const graphState of traces.values()) {
         for (const [father, children] of graphState.edges) {
             const existing = merged.edges.get(father) ?? []
-            merged.edges.set(father, [...existing, ...children])
+            for(const child of children){
+                if (!existing.includes(child )){
+                    existing.push(child)
+                }
+            }   
+            merged.edges.set(father, [...existing])
         }
         for (const [funcName, history] of graphState.node) {
             const existing = merged.node.get(funcName) ?? []

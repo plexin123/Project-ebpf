@@ -16,6 +16,7 @@
   stroke: var(--edge);
   stroke-width: 1.4px;
   fill: none;
+  marker-end: url(#callgraph-arrow);
 }
 
 .node-circle {

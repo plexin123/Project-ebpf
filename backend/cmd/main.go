@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 
@@ -23,14 +24,11 @@ import (
 )
 
 func p95(window []uint64) uint64 {
-	// sort the value
 	sorted := make([]uint64, len(window))
 	copy(sorted, window)
-	// do operation -> 95 // size(window)
+	slices.Sort(sorted)
 	index_of_95 := int(float64(len(window)) * 0.95)
-	// sorted_value[ans]
 	value := window[index_of_95]
-	// return a
 	return value
 }
 
@@ -259,7 +257,7 @@ func collector() error {
 		new_window := append(current_window, event.DurationsNS)
 		validated_window := validateWindow(new_window)
 		fmt.Printf("SENDING_DATA_PAUL")
-		if len(validated_window) >= 2 {
+		if len(validated_window) >= 1 {
 
 			currentbaselinep95 := p95(validated_window)
 
