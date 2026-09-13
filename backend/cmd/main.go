@@ -28,7 +28,7 @@ func p95(window []uint64) uint64 {
 	copy(sorted, window)
 	slices.Sort(sorted)
 	index_of_95 := int(float64(len(window)) * 0.95)
-	value := window[index_of_95]
+	value := sorted[index_of_95]
 	return value
 }
 
