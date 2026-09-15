@@ -2,8 +2,6 @@ package main
 
 type Latency_event struct {
 	DurationsNS     uint64
-	MemoryPointer   uint64
-	PidTgid         uint64
 	Name_of_process [16]byte
 }
 
@@ -21,6 +19,12 @@ type WsMessage struct {
 	Type    string `json:"type"`
 	Payload any    `json:"payload"`
 	TraceId string `json:"traceId"`
+}
+type EnvelopedEvent struct {
+	EventType     uint8
+	PidTgid       uint64
+	FuncAddress   uint64
+	Latency_event Latency_event
 }
 
 type FunctionStats struct {

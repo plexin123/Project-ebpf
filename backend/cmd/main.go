@@ -188,13 +188,6 @@ func collector() error {
 		log.Fatalf("failed to open ring buffer: %v", err)
 	}
 
-	defer reader.Close()
-
-	enterReader, err := ringbuf.NewReader(coll.Maps["enter_events"])
-	if err != nil {
-		log.Fatalf("failed to openr ring buffer: %v", err)
-	}
-
 	sig := make(chan os.Signal, 1)
 
 	signal.Notify(sig, os.Interrupt)
@@ -202,31 +195,6 @@ func collector() error {
 	go func() {
 		<-sig
 		reader.Close()
-		enterReader.Close()
-	}()
-
-	go func() {
-		for {
-			record, err := enterReader.Read()
-			if err != nil {
-				break
-			}
-			var enterEvt EnterEvent
-			if err := binary.Read(
-				bytes.NewReader(record.RawSample),
-				binary.LittleEndian,
-				&enterEvt,
-			); err != nil {
-				log.Printf("Failed to parse enter event %v", err)
-				continue
-			}
-			funcName, ok := register_map[enterEvt.FuncAddress]
-			if !ok {
-				continue
-			}
-
-			handleEnterEvent(enterEvt.PidTgid, funcName)
-		}
 	}()
 
 	for {
@@ -234,7 +202,7 @@ func collector() error {
 		if err != nil {
 			break
 		}
-		var event Latency_event
+		var event EnvelopedEvent
 		if err := binary.Read(
 			bytes.NewReader(record.RawSample),
 			binary.LittleEndian,
@@ -243,50 +211,61 @@ func collector() error {
 			log.Printf("Failed to parse event: %v", err)
 			continue
 		}
+		// 0 -> entrance event
 
-		funcName, ok := register_map[event.MemoryPointer]
-		currentTraceId := map_trace_id[event.PidTgid]
-		handleExitEvent(event.PidTgid)
-		if !ok {
-			continue
-		}
-		if map_of_functions[funcName] == nil {
-			map_of_functions[funcName] = &FunctionStats{FunctionName: funcName}
-		}
-		current_window := map_of_functions[funcName].Window
-		new_window := append(current_window, event.DurationsNS)
-		validated_window := validateWindow(new_window)
-		fmt.Printf("SENDING_DATA_PAUL")
-		if len(validated_window) >= 1 {
+		if event.EventType == 1 {
 
-			currentbaselinep95 := p95(validated_window)
-
-			baselinep95 := map_of_functions[funcName].baselinep95
-
-			event_data := FunctionEvent{
-				FuncName: funcName,
-				Duration: event.DurationsNS,
-				Current:  currentbaselinep95,
+			funcName, ok := register_map[event.FuncAddress]
+			currentTraceId := map_trace_id[event.PidTgid]
+			handleExitEvent(event.PidTgid)
+			if !ok {
+				continue
 			}
+			if map_of_functions[funcName] == nil {
+				map_of_functions[funcName] = &FunctionStats{FunctionName: funcName}
+			}
+			current_window := map_of_functions[funcName].Window
+			new_window := append(current_window, event.Latency_event.DurationsNS)
+			validated_window := validateWindow(new_window)
+			fmt.Printf("SENDING_DATA_PAUL")
+			if len(validated_window) >= 1 {
 
-			if map_of_functions[funcName].baselineflag == false {
-				map_of_functions[funcName].baselinep95 = currentbaselinep95
-				map_of_functions[funcName].baselineflag = true
-				event_data.Status = StatusBaselineSet
-				event_data.Baseline = currentbaselinep95
-			} else {
-				drift := float64(currentbaselinep95-baselinep95) / float64(baselinep95)
-				event_data.Baseline = baselinep95
-				event_data.DriftPct = drift * 100
-				if drift > 0.2 {
-					event_data.Status = StatusRegression
-				} else {
-					event_data.Status = StatusOk
+				currentbaselinep95 := p95(validated_window)
+
+				baselinep95 := map_of_functions[funcName].baselinep95
+
+				event_data := FunctionEvent{
+					FuncName: funcName,
+					Duration: event.Latency_event.DurationsNS,
+					Current:  currentbaselinep95,
 				}
 
+				if map_of_functions[funcName].baselineflag == false {
+					map_of_functions[funcName].baselinep95 = currentbaselinep95
+					map_of_functions[funcName].baselineflag = true
+					event_data.Status = StatusBaselineSet
+					event_data.Baseline = currentbaselinep95
+				} else {
+					drift := float64(currentbaselinep95-baselinep95) / float64(baselinep95)
+					event_data.Baseline = baselinep95
+					event_data.DriftPct = drift * 100
+					if drift > 0.2 {
+						event_data.Status = StatusRegression
+					} else {
+						event_data.Status = StatusOk
+					}
+
+				}
+				map_of_functions[funcName].Window = validated_window
+				broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
-			map_of_functions[funcName].Window = validated_window
-			broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
+		} else if event.EventType == 0 {
+			funcName, ok := register_map[event.FuncAddress]
+			if !ok {
+				continue
+			}
+
+			handleEnterEvent(event.PidTgid, funcName)
 		}
 	}
 
