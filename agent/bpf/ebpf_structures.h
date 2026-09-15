@@ -41,12 +41,24 @@ struct enter_event{
 };
 #endif
 
-#ifndef __RING_BUFFER_ENTER_H
-#define __RING_BUFFER_ENTER_H
+
+#ifndef __EVENT
+#define __EVENT
+struct event{
+    __u8  event_type; // 2 types -> entrance_event/ exit_event
+    __u64 pid_tgid; // unique identifier of the proccess
+    __u64 func_address; // address of the function 
+    __u64 durations_ns; // time of function to end - enter
+    char name_of_process[16];
+}__attribute__((packed))
+#endif
+
+#ifndef __RING_BUFFER_H
+#define __RING_BUFFER_H
 struct{
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1 << 24);
-} enter_events SEC(".maps");
+} events SEC(".maps");
 #endif
 
 /* ring buffer map
@@ -61,13 +73,13 @@ struct{
     
     event SEC -> Tells the compiler to put in the ELF section ".maps"
 */
-#ifndef __RING_BUFFER_H
-#define __RING_BUFFER_H
-struct  {
-    __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1 << 24);
-} events SEC(".maps"); 
-#endif
+// #ifndef __RING_BUFFER_H
+// #define __RING_BUFFER_H
+// struct  {
+//     __uint(type, BPF_MAP_TYPE_RINGBUF);
+//     __uint(max_entries, 1 << 24);
+// } events SEC(".maps"); 
+// #endif
 
 #ifndef __BPF_MAP_TYPE_HASH
 #define __BPF_MAP_TYPE_HASH
