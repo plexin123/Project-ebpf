@@ -17,8 +17,6 @@ struct process_event {
 #define __LATENCY_H
 struct latency_event{
     __u64 durations_ns;
-    __u64 memory_id;
-    __u64 pid_tgid;
     char name_of_process[16];
 };
 #endif
@@ -33,24 +31,14 @@ struct {
 } memory_map SEC(".maps");
 #endif
 
-#ifndef __ENTER_EVENT
-#define __ENTER_EVENT
-struct enter_event{
-    __u64 pid_tgid;
-    __u64 func_address;
-};
-#endif
-
-
 #ifndef __EVENT
 #define __EVENT
 struct event{
     __u8  event_type; // 2 types -> entrance_event/ exit_event
     __u64 pid_tgid; // unique identifier of the proccess
-    __u64 func_address; // address of the function 
-    __u64 durations_ns; // time of function to end - enter
-    char name_of_process[16];
-}__attribute__((packed))
+    __u64 func_address; //memory address of func
+    struct latency_event latency_event;
+}__attribute__((packed));
 #endif
 
 #ifndef __RING_BUFFER_H
