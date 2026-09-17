@@ -40,14 +40,25 @@ func validateWindow(window []uint64) []uint64 {
 	return window
 }
 
-// generate structure instance
-// c
+type Broadcaster interface {
+	Broadcast(data any)
+}
+
 type CallStackTracer struct {
 	stack_mu          sync.Mutex
 	map_trace_id      map[uint64]uuid.UUID
 	map_pid_gid_stack map[uint64][]string
+	broadCaster       Broadcaster
 }
 
+func newCallStackTracer() *CallStackTracer {
+	newCallStackTracer := &CallStackTracer{
+		map_trace_id:      make(map[uint64]uuid.UUID),
+		map_pid_gid_stack: make(map[uint64][]string),
+	}
+
+	return newCallStackTracer
+}
 func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
 	cst.stack_mu.Lock()
 	defer cst.stack_mu.Unlock()
@@ -56,8 +67,8 @@ func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
 	cst.map_pid_gid_stack[pid_gid] = get_current_stack
 	if len(get_current_stack) > 1 {
 		current_father := get_current_stack[len(get_current_stack)-2]
-		current_trace_id := map_trace_id[pid_gid]
-		broadcast(WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
+		current_trace_id := cst.map_trace_id[pid_gid]
+		cst.broadCaster.Broadcast(WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
 	}
 	if len(get_current_stack) == 1 {
 		traceId, err := uuid.NewRandom()
@@ -81,25 +92,7 @@ func (cst *CallStackTracer) handleExitEvent(pid_gid uint64) {
 	}
 
 }
-
-func main() {
-
-	http.HandleFunc("/ws", handleWS)
-
-	fmt.Printf("Websocket server starting.. on 8080")
-
-	go func() {
-		if err := http.ListenAndServe(":8080", nil); err != nil {
-			log.Printf("websocket server failed %v", err)
-		}
-	}()
-
-	if err := collector(); err != nil {
-		log.Fatalf("collector failed %v", err)
-	}
-}
-
-func collector() error {
+func (cst *CallStackTracer) collector(cn *ConnectionStructure) error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 
 		log.Fatalf("failed to remove memlock: %v", err)
@@ -220,8 +213,8 @@ func collector() error {
 		if event.EventType == 1 {
 
 			funcName, ok := register_map[event.FuncAddress]
-			currentTraceId := map_trace_id[event.PidTgid]
-			handleExitEvent(event.PidTgid)
+			currentTraceId := cst.map_trace_id[event.PidTgid]
+			cst.handleExitEvent(event.PidTgid)
 			if !ok {
 				continue
 			}
@@ -261,7 +254,7 @@ func collector() error {
 
 				}
 				map_of_functions[funcName].Window = validated_window
-				broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
+				cst.broadCaster.Broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
 		} else if event.EventType == 0 {
 			funcName, ok := register_map[event.FuncAddress]
@@ -269,9 +262,26 @@ func collector() error {
 				continue
 			}
 
-			handleEnterEvent(event.PidTgid, funcName)
+			cst.HandleEnterEvent(event.PidTgid, funcName)
 		}
 	}
 
 	return nil
+}
+func main() {
+	callStackTracer := newCallStackTracer()
+	connectionSructure := NewConnectionStructure()
+	http.HandleFunc("/ws", connectionSructure.HandleWS)
+
+	fmt.Printf("Websocket server starting.. on 8080")
+
+	go func() {
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Printf("websocket server failed %v", err)
+		}
+	}()
+
+	if err := callStackTracer.collector(connectionSructure); err != nil {
+		log.Fatalf("collector failed %v", err)
+	}
 }

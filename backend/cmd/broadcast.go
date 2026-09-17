@@ -8,25 +8,25 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type ClientInfo struct {
-	Name string
+type ConnectionStructure struct {
+	connectionMu  sync.Mutex
+	connectionMap map[*websocket.Conn]bool
+	upgrader      websocket.Upgrader
 }
 
-var upgrader = websocket.Upgrader{
-
-	CheckOrigin: func(r *http.Request) bool { return true },
+func NewConnectionStructure() *ConnectionStructure {
+	connectionStructure := &ConnectionStructure{
+		connectionMap: make(map[*websocket.Conn]bool),
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
+	}
+	return connectionStructure
 }
 
-// REGISTER CLIENTS
-// HASHMAP
-var connectionMap = make(map[*websocket.Conn]bool)
-var connectionMu sync.Mutex
-
-// LISTENING FOR CLIENTS
-
-func handleWS(w http.ResponseWriter, r *http.Request) {
+func (cs *ConnectionStructure) handleWS(w http.ResponseWriter, r *http.Request) {
 	// Connect to websocket server
-	c, err := upgrader.Upgrade(w, r, nil)
+	c, err := cs.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Printf("There has been an error: %v", err)
 		return
@@ -34,14 +34,14 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Client connected: %v", c.RemoteAddr())
 	defer c.Close()
 	// client is connected to the websocket server then send data
-	connectionMu.Lock()
-	connectionMap[c] = true
-	connectionMu.Unlock()
+	cs.connectionMu.Lock()
+	cs.connectionMap[c] = true
+	cs.connectionMu.Unlock()
 
 	defer func() {
-		connectionMu.Lock()
-		delete(connectionMap, c)
-		connectionMu.Unlock()
+		cs.connectionMu.Lock()
+		delete(cs.connectionMap, c)
+		cs.connectionMu.Unlock()
 	}()
 
 	for {
@@ -51,17 +51,17 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func broadcast(data any) {
+func (cs *ConnectionStructure) Broadcast(data any) {
 	// creating a new struct
-	connectionMu.Lock()
-	defer connectionMu.Unlock()
-	fmt.Printf("map of connections %v ", connectionMap)
-	for conn := range connectionMap {
+	cs.connectionMu.Lock()
+	defer cs.connectionMu.Unlock()
+	fmt.Printf("map of connections %v ", cs.connectionMap)
+	for conn := range cs.connectionMap {
 		fmt.Printf("Sending data %v \n", data)
 		if err := conn.WriteJSON(data); err != nil {
 			fmt.Printf("There has been an error %v \n", err)
 			conn.Close()
-			delete(connectionMap, conn)
+			delete(cs.connectionMap, conn)
 		}
 		fmt.Printf("Data has been sent successfully: %v \n", data)
 	}
