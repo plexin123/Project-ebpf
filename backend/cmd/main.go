@@ -40,16 +40,20 @@ func validateWindow(window []uint64) []uint64 {
 	return window
 }
 
-var map_pid_gid_stack = make(map[uint64][]string)
-var map_trace_id = make(map[uint64]uuid.UUID)
-var stack_mu sync.Mutex
+// generate structure instance
+// c
+type CallStackTracer struct {
+	stack_mu          sync.Mutex
+	map_trace_id      map[uint64]uuid.UUID
+	map_pid_gid_stack map[uint64][]string
+}
 
-func handleEnterEvent(pid_gid uint64, funcName string) {
-	stack_mu.Lock()
-	defer stack_mu.Unlock()
-	get_current_stack := map_pid_gid_stack[pid_gid]
+func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
+	cst.stack_mu.Lock()
+	defer cst.stack_mu.Unlock()
+	get_current_stack := cst.map_pid_gid_stack[pid_gid]
 	get_current_stack = append(get_current_stack, funcName)
-	map_pid_gid_stack[pid_gid] = get_current_stack
+	cst.map_pid_gid_stack[pid_gid] = get_current_stack
 	if len(get_current_stack) > 1 {
 		current_father := get_current_stack[len(get_current_stack)-2]
 		current_trace_id := map_trace_id[pid_gid]
@@ -60,20 +64,20 @@ func handleEnterEvent(pid_gid uint64, funcName string) {
 		if err != nil {
 			log.Fatalf("Failed to create traceId %v", err)
 		}
-		map_trace_id[pid_gid] = traceId
+		cst.map_trace_id[pid_gid] = traceId
 	}
 	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
 
 }
-func handleExitEvent(pid_gid uint64) {
-	stack_mu.Lock()
-	defer stack_mu.Unlock()
-	get_current_stack := map_pid_gid_stack[pid_gid]
+func (cst *CallStackTracer) handleExitEvent(pid_gid uint64) {
+	cst.stack_mu.Lock()
+	defer cst.stack_mu.Unlock()
+	get_current_stack := cst.map_pid_gid_stack[pid_gid]
 	if len(get_current_stack) > 0 {
-		map_pid_gid_stack[pid_gid] = get_current_stack[:len(get_current_stack)-1]
+		cst.map_pid_gid_stack[pid_gid] = get_current_stack[:len(get_current_stack)-1]
 	}
-	if len(map_pid_gid_stack[pid_gid]) == 0 {
-		delete(map_trace_id, pid_gid)
+	if len(cst.map_pid_gid_stack[pid_gid]) == 0 {
+		delete(cst.map_trace_id, pid_gid)
 	}
 
 }
