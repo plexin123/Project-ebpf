@@ -6,93 +6,26 @@ package main
 import (
 	"bytes"
 	"debug/elf"
+	"ebpf-project/backend/stats"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"slices"
 	"strings"
-	"sync"
+
+	"ebpf-project/backend/callstack"
+
+	"ebpf-project/backend/broadcast"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/google/uuid"
 )
 
-func p95(window []uint64) uint64 {
-	sorted := make([]uint64, len(window))
-	copy(sorted, window)
-	slices.Sort(sorted)
-	index_of_95 := int(float64(len(window)) * 0.95)
-	value := sorted[index_of_95]
-	return value
-}
-
-func validateWindow(window []uint64) []uint64 {
-	if len(window) > 20 {
-		new_window := window[1:]
-		return new_window
-	}
-	return window
-}
-
-type Broadcaster interface {
-	Broadcast(data any)
-}
-
-type CallStackTracer struct {
-	stack_mu          sync.Mutex
-	map_trace_id      map[uint64]uuid.UUID
-	map_pid_gid_stack map[uint64][]string
-	broadCaster       Broadcaster
-}
-
-func newCallStackTracer() *CallStackTracer {
-	newCallStackTracer := &CallStackTracer{
-		map_trace_id:      make(map[uint64]uuid.UUID),
-		map_pid_gid_stack: make(map[uint64][]string),
-	}
-
-	return newCallStackTracer
-}
-func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
-	cst.stack_mu.Lock()
-	defer cst.stack_mu.Unlock()
-	get_current_stack := cst.map_pid_gid_stack[pid_gid]
-	get_current_stack = append(get_current_stack, funcName)
-	cst.map_pid_gid_stack[pid_gid] = get_current_stack
-	if len(get_current_stack) > 1 {
-		current_father := get_current_stack[len(get_current_stack)-2]
-		current_trace_id := cst.map_trace_id[pid_gid]
-		cst.broadCaster.Broadcast(WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
-	}
-	if len(get_current_stack) == 1 {
-		traceId, err := uuid.NewRandom()
-		if err != nil {
-			log.Fatalf("Failed to create traceId %v", err)
-		}
-		cst.map_trace_id[pid_gid] = traceId
-	}
-	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
-
-}
-func (cst *CallStackTracer) handleExitEvent(pid_gid uint64) {
-	cst.stack_mu.Lock()
-	defer cst.stack_mu.Unlock()
-	get_current_stack := cst.map_pid_gid_stack[pid_gid]
-	if len(get_current_stack) > 0 {
-		cst.map_pid_gid_stack[pid_gid] = get_current_stack[:len(get_current_stack)-1]
-	}
-	if len(cst.map_pid_gid_stack[pid_gid]) == 0 {
-		delete(cst.map_trace_id, pid_gid)
-	}
-
-}
-func (cst *CallStackTracer) collector(cn *ConnectionStructure) error {
+func Collector() error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 
 		log.Fatalf("failed to remove memlock: %v", err)
@@ -214,7 +147,7 @@ func (cst *CallStackTracer) collector(cn *ConnectionStructure) error {
 
 			funcName, ok := register_map[event.FuncAddress]
 			currentTraceId := cst.map_trace_id[event.PidTgid]
-			cst.handleExitEvent(event.PidTgid)
+			cst.HandleExitEvent(event.PidTgid)
 			if !ok {
 				continue
 			}
@@ -223,11 +156,11 @@ func (cst *CallStackTracer) collector(cn *ConnectionStructure) error {
 			}
 			current_window := map_of_functions[funcName].Window
 			new_window := append(current_window, event.Latency_event.DurationsNS)
-			validated_window := validateWindow(new_window)
+			validated_window := stats.ValidateWindow(new_window)
 			fmt.Printf("SENDING_DATA_PAUL")
 			if len(validated_window) >= 1 {
 
-				currentbaselinep95 := p95(validated_window)
+				currentbaselinep95 := stats.P95(validated_window)
 
 				baselinep95 := map_of_functions[funcName].baselinep95
 
@@ -269,9 +202,9 @@ func (cst *CallStackTracer) collector(cn *ConnectionStructure) error {
 	return nil
 }
 func main() {
-	callStackTracer := newCallStackTracer()
-	connectionSructure := NewConnectionStructure()
-	http.HandleFunc("/ws", connectionSructure.HandleWS)
+	callStackTracer := callstack.New()
+	connectionStructure := broadcast.New()
+	http.HandleFunc("/ws", connectionStructure.HandleWS)
 
 	fmt.Printf("Websocket server starting.. on 8080")
 
@@ -281,7 +214,7 @@ func main() {
 		}
 	}()
 
-	if err := callStackTracer.collector(connectionSructure); err != nil {
+	if err := Collector(); err != nil {
 		log.Fatalf("collector failed %v", err)
 	}
 }

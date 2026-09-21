@@ -1,4 +1,4 @@
-package main
+package types
 
 type Latency_event struct {
 	DurationsNS     uint64

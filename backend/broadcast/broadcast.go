@@ -1,4 +1,4 @@
-package main
+package broadcast
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ type ConnectionStructure struct {
 	upgrader      websocket.Upgrader
 }
 
-func NewConnectionStructure() *ConnectionStructure {
+func New() *ConnectionStructure {
 	connectionStructure := &ConnectionStructure{
 		connectionMap: make(map[*websocket.Conn]bool),
 		upgrader: websocket.Upgrader{
@@ -24,7 +24,7 @@ func NewConnectionStructure() *ConnectionStructure {
 	return connectionStructure
 }
 
-func (cs *ConnectionStructure) handleWS(w http.ResponseWriter, r *http.Request) {
+func (cs *ConnectionStructure) HandleWS(w http.ResponseWriter, r *http.Request) {
 	// Connect to websocket server
 	c, err := cs.upgrader.Upgrade(w, r, nil)
 	if err != nil {
