@@ -51,6 +51,12 @@ func (cs *ConnectionStructure) HandleWS(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+type WsMessage struct {
+	Type    string `json:"type"`
+	Payload any    `json:"payload"`
+	TraceId string `json:"traceId"`
+}
+
 func (cs *ConnectionStructure) Broadcast(data any) {
 	// creating a new struct
 	cs.connectionMu.Lock()

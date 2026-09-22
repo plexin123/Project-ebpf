@@ -1,11 +1,10 @@
 package callstack
 
 import (
+	"ebpf-project/backend/broadcast"
 	"fmt"
 	"log"
 	"sync"
-
-	"ebpf-project/backend/types"
 
 	"github.com/google/uuid"
 )
@@ -19,6 +18,11 @@ type CallStackTracer struct {
 	Map_trace_id      map[uint64]uuid.UUID
 	Map_pid_gid_stack map[uint64][]string
 	BroadCaster       Broadcaster
+}
+
+type CallEvent struct {
+	Caller string `json:"caller"`
+	Callee string `json:"callee"`
 }
 
 func New(br Broadcaster) *CallStackTracer {
@@ -39,7 +43,7 @@ func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
 	if len(get_current_stack) > 1 {
 		current_father := get_current_stack[len(get_current_stack)-2]
 		current_trace_id := cst.Map_trace_id[pid_gid]
-		cst.BroadCaster.Broadcast(types.WsMessage{Type: "connection", Payload: types.CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
+		cst.BroadCaster.Broadcast(broadcast.WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
 	}
 	if len(get_current_stack) == 1 {
 		traceId, err := uuid.NewRandom()
