@@ -15,10 +15,9 @@ import (
 
 func main() {
 	connectionStructure := broadcast.New()
-	callStackTracer := callstack.New()
 	// the functions that appeared in Broadcaster => are gonna be implemented in the instance connection Structure
 	// quiero que uses estas funciones de esta instance en la que mi interface ha definido
-	callStackTracer.BroadCaster = connectionStructure
+	callStackTracer := callstack.New(connectionStructure)
 	http.HandleFunc("/ws", connectionStructure.HandleWS)
 
 	fmt.Printf("Websocket server starting.. on 8080")

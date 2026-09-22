@@ -21,10 +21,11 @@ type CallStackTracer struct {
 	BroadCaster       Broadcaster
 }
 
-func New() *CallStackTracer {
+func New(br Broadcaster) *CallStackTracer {
 	newCallStackTracer := &CallStackTracer{
 		Map_trace_id:      make(map[uint64]uuid.UUID),
 		Map_pid_gid_stack: make(map[uint64][]string),
+		BroadCaster:       br,
 	}
 
 	return newCallStackTracer
