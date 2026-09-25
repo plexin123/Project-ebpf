@@ -14,6 +14,12 @@ type ConnectionStructure struct {
 	upgrader      websocket.Upgrader
 }
 
+type WsMessage struct {
+	Type    string `json:"type"`
+	Payload any    `json:"payload"`
+	TraceId string `json:"traceId"`
+}
+
 func New() *ConnectionStructure {
 	connectionStructure := &ConnectionStructure{
 		connectionMap: make(map[*websocket.Conn]bool),
@@ -49,12 +55,6 @@ func (cs *ConnectionStructure) HandleWS(w http.ResponseWriter, r *http.Request) 
 			break
 		}
 	}
-}
-
-type WsMessage struct {
-	Type    string `json:"type"`
-	Payload any    `json:"payload"`
-	TraceId string `json:"traceId"`
 }
 
 func (cs *ConnectionStructure) Broadcast(data any) {

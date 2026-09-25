@@ -3,8 +3,10 @@ package collector
 import (
 	"bytes"
 	"debug/elf"
+	"ebpf-project/backend/broadcast"
 	"ebpf-project/backend/callstack"
 	"ebpf-project/backend/stats"
+
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -23,21 +25,11 @@ type Latency_event struct {
 	Name_of_process [16]byte
 }
 
-type CallEvent struct {
-	Caller string `json:"caller"`
-	Callee string `json:"callee"`
-}
-
 type EnterEvent struct {
 	PidTgid     uint64
 	FuncAddress uint64
 }
 
-type WsMessage struct {
-	Type    string `json:"type"`
-	Payload any    `json:"payload"`
-	TraceId string `json:"traceId"`
-}
 type EnvelopedEvent struct {
 	EventType     uint8
 	PidTgid       uint64
@@ -232,7 +224,7 @@ func Collector(callStackTracer *callstack.CallStackTracer) error {
 
 				}
 				map_of_functions[funcName].Window = validated_window
-				callStackTracer.BroadCaster.Broadcast(WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
+				callStackTracer.BroadCaster.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
 		} else if event.EventType == 0 {
 			funcName, ok := register_map[event.FuncAddress]
