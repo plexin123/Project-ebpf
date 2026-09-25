@@ -3,10 +3,13 @@ package database
 import (
 	"database/sql"
 	"log"
+	"time"
 
 	"ebpf-project/backend/collector"
 
 	_ "modernc.org/sqlite"
+
+	"context"
 )
 
 // create structure to contain the db structure
@@ -34,24 +37,40 @@ func Open(path string) (*Database, error) {
 	}, nil
 }
 
-//	type FunctionEvent struct {
-//		FuncName string  `json:"funcName"`
-//		Duration uint64  `json:"duration"`
-//		Status   Status  `json:"status"`
-//		Baseline uint64  `json:"baseline"`
-//		Current  uint64  `json:"current"`
-//		DriftPct float64 `json:"driftPct"`
-//	}
-func (s *Database) InsertEvent(functionEvent collector.FunctionEvent) error {
-	// TO DO
-	// INSERT INTO TABLE
-	// IF NOT RETURN ERROR
-	return nil
+// INSERTING A NEW EVENT WHEN IT ARRIVES
+
+func (s *Database) InsertEvent(functionEvent collector.FunctionEvent) (int64, error) {
+	query := "INSERT INTO EVENT (FunctionName,Baseline,...) VALUES(? ,?)"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := s.db.ExecContext(ctx, query, functionEvent.FuncName, functionEvent.Baseline, functionEvent.Status, functionEvent.DriftPct, functionEvent.Current)
+	if err != nil {
+		log.Fatalf("There has been an error executing the query", err)
+	}
+	last_id, err := result.LastInsertId()
+	if err != nil {
+		log.Fatalf("Could not retrieve the last id", err)
+	}
+	return last_id, nil
 }
 
-func (s *Database) GetHistory(functionName string) ([]collector.FunctionEvent, error) {
-	// TO DO
-	// with a functionName
-	// return a history of this function
-	return nil, nil
+func (s *Database) GetHistory(functionName string, rows int) ([]collector.FunctionEvent, error) {
+	query := "SELECT * FROM EVENT WHERE (FunctionName) EQUAL VALUE(?)"
+	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	defer cancel()
+	result, err := s.db.QueryContext(ctx, query, functionName)
+	if err != nil {
+		log.Fatalf("Could not retrieve the last id", err)
+	}
+	var functionEvents []collector.FunctionEvent
+	for result.Next() {
+		var functionEvent collector.FunctionEvent
+		err := result.Scan(&functionEvent.FuncName, &functionEvent.Duration)
+		if err != nil {
+			log.Fatalf("Could not retrieve the last id", err)
+		}
+		functionEvents = append(functionEvents, functionEvent)
+	}
+
+	return functionEvents, nil
 }
