@@ -6,8 +6,6 @@ import (
 	"log"
 	"time"
 
-	"ebpf-project/backend/collector"
-
 	_ "modernc.org/sqlite"
 
 	"context"
@@ -16,6 +14,24 @@ import (
 type Database struct {
 	db *sql.DB
 }
+
+type FunctionEvent struct {
+	FuncName  string  `json:"funcName"`
+	Duration  uint64  `json:"duration"`
+	Status    Status  `json:"status"`
+	Baseline  uint64  `json:"baseline"`
+	Current   uint64  `json:"current"`
+	DriftPct  float64 `json:"driftPct"`
+	TimeStamp uint64  `json:"timestamp"`
+}
+
+type Status string
+
+const (
+	StatusOk          Status = "ok"
+	StatusBaselineSet Status = "baseline_set"
+	StatusRegression  Status = "regression"
+)
 
 func Open(path string) (*Database, error) {
 	db, err := sql.Open("sqlite", path)
@@ -36,7 +52,7 @@ func Open(path string) (*Database, error) {
 
 // INSERTING A NEW EVENT WHEN IT ARRIVES
 
-func (s *Database) InsertEvent(functionEvent collector.FunctionEvent) (int64, error) {
+func (s *Database) InsertEvent(functionEvent FunctionEvent) (int64, error) {
 	query := "INSERT INTO EVENT (FunctionName,Baseline,...) VALUES(? ,?)"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -53,7 +69,7 @@ func (s *Database) InsertEvent(functionEvent collector.FunctionEvent) (int64, er
 
 // GetHistory of a function -> from one specific time stamp
 // Or just a fix amount of rows mm
-func (s *Database) GetHistory(functionName string, rows int) ([]collector.FunctionEvent, error) {
+func (s *Database) GetHistory(functionName string, rows int) ([]FunctionEvent, error) {
 	query := "SELECT * FROM EVENT LIMIT VALUE(?) WHERE (FunctionName) = VALUE(?) ORDER BY TimeStamp DESC LIMIT VALUE(?)"
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 	defer cancel()
@@ -61,9 +77,9 @@ func (s *Database) GetHistory(functionName string, rows int) ([]collector.Functi
 	if err != nil {
 		return nil, fmt.Errorf("Error inserting event: %w", err)
 	}
-	var functionEvents []collector.FunctionEvent
+	var functionEvents []FunctionEvent
 	for result.Next() {
-		var functionEvent collector.FunctionEvent
+		var functionEvent FunctionEvent
 		err := result.Scan(&functionEvent.FuncName, &functionEvent.TimeStamp, &functionEvent.Duration, &functionEvent.Baseline, &functionEvent.Current, &functionEvent.DriftPct, &functionEvent.Status)
 		if err != nil {
 			return nil, fmt.Errorf("Error adding events: %w", err)

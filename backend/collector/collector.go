@@ -5,6 +5,7 @@ import (
 	"debug/elf"
 	"ebpf-project/backend/broadcast"
 	"ebpf-project/backend/callstack"
+	"ebpf-project/backend/database"
 	"ebpf-project/backend/stats"
 
 	"encoding/binary"
@@ -63,7 +64,7 @@ const (
 )
 
 // TO DO: Separation between the mapping functionality and calculation
-func Collector(callStackTracer *callstack.CallStackTracer) error {
+func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database) error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 
 		log.Fatalf("failed to remove memlock: %v", err)
@@ -225,6 +226,16 @@ func Collector(callStackTracer *callstack.CallStackTracer) error {
 
 				}
 				map_of_functions[funcName].Window = validated_window
+				// database insertion backend
+				db.InsertEvent(database.FunctionEvent{
+					FuncName:  event_data.FuncName,
+					Duration:  event_data.Duration,
+					Status:    database.Status(event_data.Status),
+					Baseline:  event_data.Baseline,
+					Current:   event_data.Current,
+					DriftPct:  event_data.DriftPct,
+					TimeStamp: event_data.TimeStamp,
+				})
 				callStackTracer.BroadCaster.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
 		} else if event.EventType == 0 {
@@ -232,7 +243,6 @@ func Collector(callStackTracer *callstack.CallStackTracer) error {
 			if !ok {
 				continue
 			}
-
 			callStackTracer.HandleEnterEvent(event.PidTgid, funcName)
 		}
 	}

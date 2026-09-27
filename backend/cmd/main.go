@@ -23,10 +23,6 @@ func main() {
 	}
 	handler := database.New(databaseInstance)
 
-	// databaseStructure, err := database.Open("path")
-	// if err != nil {
-	// 	log.Fatalf("database initialization has failed %v", err)
-	// }
 	callStackTracer := callstack.New(connectionStructure)
 
 	http.HandleFunc("/ws", connectionStructure.HandleWS)
