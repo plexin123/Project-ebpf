@@ -11,14 +11,26 @@ import (
 	"ebpf-project/backend/broadcast"
 	"ebpf-project/backend/callstack"
 	"ebpf-project/backend/collector"
+	"ebpf-project/backend/database"
 )
 
 func main() {
+	PATH := "in-memory"
 	connectionStructure := broadcast.New()
-	// the functions that appeared in Broadcaster => are gonna be implemented in the instance connection Structure
-	// quiero que uses estas funciones de esta instance en la que mi interface ha definido
+	databaseInstance, err := database.Open(PATH)
+	if err != nil {
+		fmt.Printf("Could not created a instance of a database %v", err)
+	}
+	handler := database.New(databaseInstance)
+
+	// databaseStructure, err := database.Open("path")
+	// if err != nil {
+	// 	log.Fatalf("database initialization has failed %v", err)
+	// }
 	callStackTracer := callstack.New(connectionStructure)
+
 	http.HandleFunc("/ws", connectionStructure.HandleWS)
+	http.HandleFunc("/history/{name}", handler.GetHistoryByName)
 
 	fmt.Printf("Websocket server starting.. on 8080")
 

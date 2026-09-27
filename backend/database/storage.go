@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -11,10 +12,6 @@ import (
 
 	"context"
 )
-
-// create structure to contain the db structure
-// create function that open the database, and execute the creation of a table
-// return the structure
 
 type Database struct {
 	db *sql.DB
@@ -45,29 +42,31 @@ func (s *Database) InsertEvent(functionEvent collector.FunctionEvent) (int64, er
 	defer cancel()
 	result, err := s.db.ExecContext(ctx, query, functionEvent.FuncName, functionEvent.Baseline, functionEvent.Status, functionEvent.DriftPct, functionEvent.Current)
 	if err != nil {
-		log.Fatalf("There has been an error executing the query", err)
+		return -1, fmt.Errorf("Error inserting event: %w", err)
 	}
 	last_id, err := result.LastInsertId()
 	if err != nil {
-		log.Fatalf("Could not retrieve the last id", err)
+		return -1, fmt.Errorf("Error inserting event: %w", err)
 	}
 	return last_id, nil
 }
 
+// GetHistory of a function -> from one specific time stamp
+// Or just a fix amount of rows mm
 func (s *Database) GetHistory(functionName string, rows int) ([]collector.FunctionEvent, error) {
-	query := "SELECT * FROM EVENT WHERE (FunctionName) EQUAL VALUE(?)"
+	query := "SELECT * FROM EVENT LIMIT VALUE(?) WHERE (FunctionName) = VALUE(?) ORDER BY TimeStamp DESC LIMIT VALUE(?)"
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 	defer cancel()
-	result, err := s.db.QueryContext(ctx, query, functionName)
+	result, err := s.db.QueryContext(ctx, query, functionName, rows)
 	if err != nil {
-		log.Fatalf("Could not retrieve the last id", err)
+		return nil, fmt.Errorf("Error inserting event: %w", err)
 	}
 	var functionEvents []collector.FunctionEvent
 	for result.Next() {
 		var functionEvent collector.FunctionEvent
-		err := result.Scan(&functionEvent.FuncName, &functionEvent.Duration)
+		err := result.Scan(&functionEvent.FuncName, &functionEvent.TimeStamp, &functionEvent.Duration, &functionEvent.Baseline, &functionEvent.Current, &functionEvent.DriftPct, &functionEvent.Status)
 		if err != nil {
-			log.Fatalf("Could not retrieve the last id", err)
+			return nil, fmt.Errorf("Error adding events: %w", err)
 		}
 		functionEvents = append(functionEvents, functionEvent)
 	}

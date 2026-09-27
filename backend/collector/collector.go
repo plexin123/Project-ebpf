@@ -45,12 +45,13 @@ type FunctionStats struct {
 }
 
 type FunctionEvent struct {
-	FuncName string  `json:"funcName"`
-	Duration uint64  `json:"duration"`
-	Status   Status  `json:"status"`
-	Baseline uint64  `json:"baseline"`
-	Current  uint64  `json:"current"`
-	DriftPct float64 `json:"driftPct"`
+	FuncName  string  `json:"funcName"`
+	Duration  uint64  `json:"duration"`
+	Status    Status  `json:"status"`
+	Baseline  uint64  `json:"baseline"`
+	Current   uint64  `json:"current"`
+	DriftPct  float64 `json:"driftPct"`
+	TimeStamp uint64  `json:"timestamp"`
 }
 
 type Status string
