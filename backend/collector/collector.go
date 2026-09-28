@@ -227,7 +227,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 				}
 				map_of_functions[funcName].Window = validated_window
 				timeStamp := time.Now()
-				timeStampUnix := timeStamp.UnixNano()
+				timeStampUnix := timeStamp.UnixMilli()
 				db.InsertEvent(database.FunctionEvent{
 					FuncName:   event_data.FuncName,
 					Duration:   event_data.Duration,
@@ -238,8 +238,8 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 					TimeStamp:  timeStampUnix,
 					CommitHash: commit,
 				})
-				// send data as milliseconds then frontend, a
-				event_data.TimeStamp = timeStamp.Unix()
+
+				event_data.TimeStamp = timeStamp.UnixMilli()
 				event_data.CommitHash = commit
 				callStackTracer.BroadCaster.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
