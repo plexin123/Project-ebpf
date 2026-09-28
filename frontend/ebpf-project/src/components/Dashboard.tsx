@@ -14,9 +14,10 @@ import { CallGraph } from './CallGraph'
 import './Dashboard.css'
 
 const DEFAULT_URL = ""
-
 export function Dashboard() {
     const { traces, dispatch } = useGraph()
+    const [selectedFunction, setSelectedFunction] = useState<string|null>("")
+    const [history, setHistory] = useState<FunctionEvent[]>([])
     const [traceId, setTraceId] = useState("")
     const status = WebsocketConnectionEntrance(DEFAULT_URL, (ws_message: WSMessage) => {
         setTraceId(ws_message.traceId)
@@ -36,10 +37,14 @@ export function Dashboard() {
         }
     })
 
-    // se usa el merge de todos los traces (no solo el traceId más reciente) porque
-    // el backend genera un traceId nuevo por cada llamada de nivel superior — con
-    // un binario que hace muchas llamadas cortas, leer solo el último dejaría el
-    // grafo "reiniciándose" todo el tiempo
+    const triggerAction = async (functionName:string) => {
+        setSelectedFunction(functionName)
+        const response = await fetch(`http://192.168.110.128:8080/history/${functionName}?rows=50`)
+        const data: FunctionEvent[] = await response.json()
+        setHistory(data)
+        
+    }
+
     const merged = useMemo(() => mergeTraces(traces), [traces])
     const edges = merged.edges
     const functionStats = merged.node
@@ -52,12 +57,12 @@ export function Dashboard() {
             </header>
 
             <section className="panel">
-                <h2>Grafo</h2>
+                <h2>Graph</h2>
                 <CallGraph graphState={merged} />
             </section>
 
             <section className="panel">
-                <h2>Funciones</h2>
+                <h2>Functions</h2>
                 <table>
                     <thead>
                         <tr><th>Function</th><th>Status</th><th>Duration</th><th>Drift</th><th>TimeStamp</th><th>Commit</th></tr>
@@ -66,13 +71,13 @@ export function Dashboard() {
                         {Array.from(functionStats?.entries() ?? []).map(([funcName, history]) => {
                             const latest = history[history.length - 1]
                             return (
-                                <tr key={funcName}>
+                                <tr key={funcName} onClick= {() => triggerAction(funcName) }>
                                     <td className="mono">{funcName}</td>
                                     <td><span className={`badge badge-${latest.status}`}>{latest.status}</span></td>
                                     <td className="num">{latest.duration}</td>
                                     <td className="num">{latest.driftPct ? `${latest.driftPct.toFixed(1)}%` : '—'}</td>
-                                    <td className="mono">{new Date(latest.timestamp).toLocaleString()} </td> 
-                                    <td className="mono">{latest.commitHash}</td>
+                                    <td className="num">{new Date(latest.timestamp).toLocaleString()} </td> 
+                                    <td className="num">{latest.commitHash}</td>
                                 </tr>
                             )
                         })}
@@ -83,11 +88,35 @@ export function Dashboard() {
                 </table>
             </section>
 
+
             <section className="panel">
-                <h2>Relaciones</h2>
+                <h2>Function History</h2>
                 <table>
                     <thead>
-                        <tr><th>Función</th><th>Llama a</th></tr>
+                        <tr><th>Function</th><th>Status</th><th>Duration</th><th>Drift</th><th>TimeStamp</th><th>Commit</th></tr>
+                    </thead>
+                    <tbody>
+                        {history.map((item) => {
+                            return (
+                                <tr key={selectedFunction}>
+                                    <td className="mono">{selectedFunction}</td>
+                                    <td><span className={`badge badge-${item.status}`}>{item.status}</span></td>
+                                    <td className="num">{item.duration}</td>
+                                    <td className="num">{item.driftPct ? `${item.driftPct.toFixed(1)}%` : '—'}</td>
+                                    <td className="num">{new Date(item.timestamp).toLocaleString()} </td> 
+                                    <td className="num">{item.commitHash}</td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                </table>
+            </section>
+
+            <section className="panel">
+                <h2>Relations</h2>
+                <table>
+                    <thead>
+                        <tr><th>Function</th><th>Calls to</th></tr>
                     </thead>
                     <tbody>
                         {Array.from(edges?.entries() ?? []).map(([father, children]) => (
@@ -97,11 +126,12 @@ export function Dashboard() {
                             </tr>
                         ))}
                         {(!edges || edges.size === 0) && (
-                            <tr className="empty-row"><td colSpan={2}>esperando eventos…</td></tr>
+                            <tr className="empty-row"><td colSpan={2}>waiting for events..</td></tr>
                         )}
                     </tbody>
                 </table>
             </section>
+                    
         </div>
     )
 }

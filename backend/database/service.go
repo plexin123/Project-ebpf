@@ -26,6 +26,7 @@ func (s *Service) GetHistoryByName(w http.ResponseWriter, r *http.Request) {
 	}
 	functionEvents, err := s.database.GetHistory(name, amount_of_rows)
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if err != nil {
 		error_message := map[string]string{
 			"error": "Failed to retrieve history",
