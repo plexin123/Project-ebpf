@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	PATH := "in-memory"
+	PATH := ":memory:"
 	connectionStructure := broadcast.New()
 	databaseInstance, err := database.Open(PATH)
 	if err != nil {
@@ -36,7 +36,7 @@ func main() {
 		}
 	}()
 
-	if err := collector.Collector(callStackTracer); err != nil {
+	if err := collector.Collector(callStackTracer, databaseInstance); err != nil {
 		log.Fatalf("collector failed %v", err)
 	}
 }

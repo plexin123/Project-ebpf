@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -52,7 +53,7 @@ type FunctionEvent struct {
 	Baseline  uint64  `json:"baseline"`
 	Current   uint64  `json:"current"`
 	DriftPct  float64 `json:"driftPct"`
-	TimeStamp uint64  `json:"timestamp"`
+	TimeStamp int64   `json:"timestamp"`
 }
 
 type Status string
@@ -180,8 +181,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 			log.Printf("Failed to parse event: %v", err)
 			continue
 		}
-		// 0 -> entrance event
-
+		//SEPARATION OF AGENT AND COLLECTOR
 		if event.EventType == 1 {
 
 			funcName, ok := register_map[event.FuncAddress]
@@ -196,7 +196,6 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 			current_window := map_of_functions[funcName].Window
 			new_window := append(current_window, event.Latency_event.DurationsNS)
 			validated_window := stats.ValidateWindow(new_window)
-			fmt.Printf("SENDING_DATA_PAUL")
 			if len(validated_window) >= 1 {
 
 				currentbaselinep95 := stats.P95(validated_window)
@@ -226,7 +225,8 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 
 				}
 				map_of_functions[funcName].Window = validated_window
-				// database insertion backend
+				timeStamp := time.Now()
+				timeStampUnix := timeStamp.UnixNano()
 				db.InsertEvent(database.FunctionEvent{
 					FuncName:  event_data.FuncName,
 					Duration:  event_data.Duration,
@@ -234,8 +234,10 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 					Baseline:  event_data.Baseline,
 					Current:   event_data.Current,
 					DriftPct:  event_data.DriftPct,
-					TimeStamp: event_data.TimeStamp,
+					TimeStamp: timeStampUnix,
 				})
+				// send data as milliseconds then frontend, a
+				event_data.TimeStamp = timeStamp.Unix()
 				callStackTracer.BroadCaster.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
 		} else if event.EventType == 0 {
@@ -243,6 +245,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 			if !ok {
 				continue
 			}
+
 			callStackTracer.HandleEnterEvent(event.PidTgid, funcName)
 		}
 	}
