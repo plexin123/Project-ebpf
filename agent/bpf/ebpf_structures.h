@@ -61,13 +61,6 @@ struct{
     
     event SEC -> Tells the compiler to put in the ELF section ".maps"
 */
-// #ifndef __RING_BUFFER_H
-// #define __RING_BUFFER_H
-// struct  {
-//     __uint(type, BPF_MAP_TYPE_RINGBUF);
-//     __uint(max_entries, 1 << 24);
-// } events SEC(".maps"); 
-// #endif
 
 #ifndef __BPF_MAP_TYPE_HASH
 #define __BPF_MAP_TYPE_HASH

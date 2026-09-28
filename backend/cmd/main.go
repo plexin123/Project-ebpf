@@ -30,7 +30,7 @@ func main() {
 			commit_hash = val.Value
 		}
 	}
-	PATH := ":memory:"
+	PATH := "./data/app.db"
 	connectionStructure := broadcast.New()
 	databaseInstance, err := database.Open(PATH)
 	if err != nil {
