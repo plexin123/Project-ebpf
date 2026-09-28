@@ -98,7 +98,7 @@ export function Dashboard() {
                     <tbody>
                         {history.map((item) => {
                             return (
-                                <tr key={selectedFunction}>
+                                <tr key={item.timestamp}>
                                     <td className="mono">{selectedFunction}</td>
                                     <td><span className={`badge badge-${item.status}`}>{item.status}</span></td>
                                     <td className="num">{item.duration}</td>
