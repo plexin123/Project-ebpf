@@ -66,7 +66,7 @@ const (
 )
 
 // TO DO: Separation between the mapping functionality and calculation
-func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database) error {
+func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database, commit string) error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 
 		log.Fatalf("failed to remove memlock: %v", err)
@@ -229,16 +229,18 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 				timeStamp := time.Now()
 				timeStampUnix := timeStamp.UnixNano()
 				db.InsertEvent(database.FunctionEvent{
-					FuncName:  event_data.FuncName,
-					Duration:  event_data.Duration,
-					Status:    database.Status(event_data.Status),
-					Baseline:  event_data.Baseline,
-					Current:   event_data.Current,
-					DriftPct:  event_data.DriftPct,
-					TimeStamp: timeStampUnix,
+					FuncName:   event_data.FuncName,
+					Duration:   event_data.Duration,
+					Status:     database.Status(event_data.Status),
+					Baseline:   event_data.Baseline,
+					Current:    event_data.Current,
+					DriftPct:   event_data.DriftPct,
+					TimeStamp:  timeStampUnix,
+					CommitHash: commit,
 				})
 				// send data as milliseconds then frontend, a
 				event_data.TimeStamp = timeStamp.Unix()
+				event_data.CommitHash = commit
 				callStackTracer.BroadCaster.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
 		} else if event.EventType == 0 {
