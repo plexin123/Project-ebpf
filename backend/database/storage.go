@@ -16,16 +16,15 @@ type Database struct {
 }
 
 type FunctionEvent struct {
-	FuncName  string  `json:"funcName"`
-	Commit    string  `json:"commit"`
-	Duration  uint64  `json:"duration"`
-	Status    Status  `json:"status"`
-	Baseline  uint64  `json:"baseline"`
-	Current   uint64  `json:"current"`
-	DriftPct  float64 `json:"driftPct"`
-	TimeStamp uint64  `json:"timestamp"`
+	FuncName   string  `json:"funcName"`
+	Duration   uint64  `json:"duration"`
+	Status     Status  `json:"status"`
+	Baseline   uint64  `json:"baseline"`
+	Current    uint64  `json:"current"`
+	DriftPct   float64 `json:"driftPct"`
+	TimeStamp  int64   `json:"timestamp"`
+	CommitHash string  `json:"commithash"`
 }
-
 type Status string
 
 const (
@@ -49,7 +48,8 @@ func Open(path string) (*Database, error) {
 				baseline INTEGER NOT NULL,
 				current INTEGER  NOT NULL,
 				drift_pct REAL NOT NULL,
-				time_stamp INTEGER NOT NULL)`
+				time_stamp INTEGER NOT NULL
+				)`
 
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (s *Database) InsertEvent(functionEvent FunctionEvent) (int64, error) {
 	query := "INSERT INTO function_event (function_name,commit_hash,duration,status,baseline,current,drift_pct,time_stamp) VALUES(?,?,?,?,?,?,?,?)"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := s.db.ExecContext(ctx, query, functionEvent.FuncName, functionEvent.Baseline, functionEvent.Status, functionEvent.DriftPct, functionEvent.Current)
+	result, err := s.db.ExecContext(ctx, query, functionEvent.FuncName, functionEvent.CommitHash, functionEvent.Duration, functionEvent.Status, functionEvent.Baseline, functionEvent.Current, functionEvent.DriftPct, functionEvent.TimeStamp)
 	if err != nil {
 		return -1, fmt.Errorf("Error inserting event: %w", err)
 	}
@@ -80,7 +80,7 @@ func (s *Database) InsertEvent(functionEvent FunctionEvent) (int64, error) {
 // GetHistory of a function -> from one specific time stamp
 // Or just a fix amount of rows mm
 func (s *Database) GetHistory(functionName string, rows int) ([]FunctionEvent, error) {
-	query := "SELECT * FROM function_event WHERE function_name = ? ORDER BY time_stamp DESC LIMIT ?"
+	query := "SELECT function_name,commit_hash,duration,status,baseline,current,drift_pct,time_stamp FROM function_event WHERE function_name = ? ORDER BY time_stamp DESC LIMIT ?"
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 	defer cancel()
 	result, err := s.db.QueryContext(ctx, query, functionName, rows)
@@ -90,7 +90,7 @@ func (s *Database) GetHistory(functionName string, rows int) ([]FunctionEvent, e
 	var functionEvents []FunctionEvent
 	for result.Next() {
 		var functionEvent FunctionEvent
-		err := result.Scan(&functionEvent.FuncName, &functionEvent.TimeStamp, &functionEvent.Duration, &functionEvent.Baseline, &functionEvent.Current, &functionEvent.DriftPct, &functionEvent.Status)
+		err := result.Scan(&functionEvent.FuncName, &functionEvent.CommitHash, &functionEvent.Duration, &functionEvent.Status, &functionEvent.Baseline, &functionEvent.Current, &functionEvent.DriftPct, &functionEvent.TimeStamp)
 		if err != nil {
 			return nil, fmt.Errorf("Error adding events: %w", err)
 		}

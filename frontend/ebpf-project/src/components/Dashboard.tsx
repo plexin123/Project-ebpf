@@ -60,7 +60,7 @@ export function Dashboard() {
                 <h2>Funciones</h2>
                 <table>
                     <thead>
-                        <tr><th>Función</th><th>Status</th><th>Duración</th><th>Drift</th></tr>
+                        <tr><th>Function</th><th>Status</th><th>Duration</th><th>Drift</th><th>TimeStamp</th><th>Commit</th></tr>
                     </thead>
                     <tbody>
                         {Array.from(functionStats?.entries() ?? []).map(([funcName, history]) => {
@@ -71,6 +71,8 @@ export function Dashboard() {
                                     <td><span className={`badge badge-${latest.status}`}>{latest.status}</span></td>
                                     <td className="num">{latest.duration}</td>
                                     <td className="num">{latest.driftPct ? `${latest.driftPct.toFixed(1)}%` : '—'}</td>
+                                    <td className="mono">{new Date(latest.timestamp).toLocaleString()} </td> 
+                                    <td className="mono">{latest.commitHash}</td>
                                 </tr>
                             )
                         })}

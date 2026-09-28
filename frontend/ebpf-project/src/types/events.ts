@@ -10,6 +10,8 @@ export type FunctionEvent = {
   current: number;
   driftPct: number;
   status: "ok" | "baseline_set" | "regression";
+  timestamp: number;
+  commitHash: string;
 };
 
 export type WSMessage = {
