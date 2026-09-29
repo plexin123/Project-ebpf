@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react'
 
 import { WebsocketConnectionEntrance } from '../hooks/useWebsockets'
+import { ConvertIntoMilliSeconds } from '../lib/format'
 import { useGraph } from '../state/GraphContext'
 import { CallEvent, FunctionEvent, WSMessage } from '../types/events'
 import { mergeTraces } from '../lib/graph'
@@ -74,7 +75,7 @@ export function Dashboard() {
                                 <tr key={funcName} onClick= {() => triggerAction(funcName) }>
                                     <td className="mono">{funcName}</td>
                                     <td><span className={`badge badge-${latest.status}`}>{latest.status}</span></td>
-                                    <td className="num">{latest.duration}</td>
+                                    <td className="num">{ConvertIntoMilliSeconds(latest.duration)}</td>
                                     <td className="num">{latest.driftPct ? `${latest.driftPct.toFixed(1)}%` : '—'}</td>
                                     <td className="num">{new Date(latest.timestamp).toLocaleString()} </td> 
                                     <td className="num">{latest.commitHash}</td>
@@ -101,7 +102,7 @@ export function Dashboard() {
                                 <tr key={item.timestamp}>
                                     <td className="mono">{selectedFunction}</td>
                                     <td><span className={`badge badge-${item.status}`}>{item.status}</span></td>
-                                    <td className="num">{item.duration}</td>
+                                    <td className="num">{ConvertIntoMilliSeconds(item.duration)}</td>
                                     <td className="num">{item.driftPct ? `${item.driftPct.toFixed(1)}%` : '—'}</td>
                                     <td className="num">{new Date(item.timestamp).toLocaleString()} </td> 
                                     <td className="num">{item.commitHash}</td>

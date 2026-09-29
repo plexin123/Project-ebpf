@@ -34,6 +34,14 @@ func New(br Broadcaster) *CallStackTracer {
 
 	return newCallStackTracer
 }
+
+func (cst *CallStackTracer) SelfTimeCalculation() uint64 {
+	// TO DO: Implementation of self function time without children/dependent
+	return 0
+}
+
+// instead of just funcName send the whole structure
+// or just send the time
 func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
 	cst.Stack_mu.Lock()
 	defer cst.Stack_mu.Unlock()
