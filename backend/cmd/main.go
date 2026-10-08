@@ -37,7 +37,7 @@ func main() {
 		fmt.Printf("Could not created a instance of a database %v", err)
 	}
 	handler := database.New(databaseInstance)
-	callStackTracer := callstack.New(connectionStructure)
+	callStackTracer := callstack.New()
 
 	http.HandleFunc("/ws", connectionStructure.HandleWS)
 	http.HandleFunc("/history/{name}", handler.GetHistoryByName)
@@ -50,7 +50,7 @@ func main() {
 		}
 	}()
 
-	if err := collector.Collector(callStackTracer, databaseInstance, commit_hash); err != nil {
+	if err := collector.Collector(callStackTracer, databaseInstance, connectionStructure, commit_hash); err != nil {
 		log.Fatalf("collector failed %v", err)
 	}
 }

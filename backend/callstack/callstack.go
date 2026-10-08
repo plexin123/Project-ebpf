@@ -1,7 +1,6 @@
 package callstack
 
 import (
-	"ebpf-project/backend/broadcast"
 	"fmt"
 	"log"
 	"sync"
@@ -9,15 +8,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type Broadcaster interface {
-	Broadcast(data any)
-}
+// type Broadcaster interface {
+// 	Broadcast(data any)
+// }
 
 type CallStackTracer struct {
 	Stack_mu          sync.Mutex
 	Map_trace_id      map[uint64]uuid.UUID
 	Map_pid_gid_stack map[uint64][]string
-	BroadCaster       Broadcaster
+	// BroadCaster       Broadcaster
 }
 
 type CallEvent struct {
@@ -25,11 +24,11 @@ type CallEvent struct {
 	Callee string `json:"callee"`
 }
 
-func New(br Broadcaster) *CallStackTracer {
+func New() *CallStackTracer {
 	newCallStackTracer := &CallStackTracer{
 		Map_trace_id:      make(map[uint64]uuid.UUID),
 		Map_pid_gid_stack: make(map[uint64][]string),
-		BroadCaster:       br,
+		// BroadCaster:       br,
 	}
 
 	return newCallStackTracer
@@ -37,12 +36,14 @@ func New(br Broadcaster) *CallStackTracer {
 
 func (cst *CallStackTracer) SelfTimeCalculation() uint64 {
 	// TO DO: Implementation of self function time without children/dependent
+	// each parent_func,sum_children_time
+	//
 	return 0
 }
 
 // instead of just funcName send the whole structure
 // or just send the time
-func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
+func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) (CallEvent, uuid.UUID) {
 	cst.Stack_mu.Lock()
 	defer cst.Stack_mu.Unlock()
 	get_current_stack := cst.Map_pid_gid_stack[pid_gid]
@@ -51,7 +52,9 @@ func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
 	if len(get_current_stack) > 1 {
 		current_father := get_current_stack[len(get_current_stack)-2]
 		current_trace_id := cst.Map_trace_id[pid_gid]
-		cst.BroadCaster.Broadcast(broadcast.WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
+		//Separation of responsabilities to avoid cycle dependency
+		return CallEvent{Caller: current_father, Callee: funcName}, current_trace_id
+		// cst.BroadCaster.Broadcast(broadcast.WsMessage{Type: "connection", Payload: CallEvent{Caller: current_father, Callee: funcName}, TraceId: current_trace_id.String()})
 	}
 	if len(get_current_stack) == 1 {
 		traceId, err := uuid.NewRandom()
@@ -61,6 +64,7 @@ func (cst *CallStackTracer) HandleEnterEvent(pid_gid uint64, funcName string) {
 		cst.Map_trace_id[pid_gid] = traceId
 	}
 	fmt.Printf("This is the current stack for this pid %v: %v", pid_gid, get_current_stack)
+	return CallEvent{}, uuid.Nil
 }
 
 func (cst *CallStackTracer) HandleExitEvent(pid_gid uint64) {

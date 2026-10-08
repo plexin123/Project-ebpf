@@ -66,7 +66,7 @@ const (
 )
 
 // TO DO: Separation between the mapping functionality and calculation
-func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database, commit string) error {
+func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database, connection *broadcast.ConnectionStructure, commit string) error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 
 		log.Fatalf("failed to remove memlock: %v", err)
@@ -241,7 +241,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 
 				event_data.TimeStamp = timeStamp.UnixMilli()
 				event_data.CommitHash = commit
-				callStackTracer.BroadCaster.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
+				connection.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: currentTraceId.String()})
 			}
 		} else if event.EventType == 0 {
 			funcName, ok := register_map[event.FuncAddress]
@@ -249,7 +249,8 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 				continue
 			}
 
-			callStackTracer.HandleEnterEvent(event.PidTgid, funcName)
+			callEvent, unique_id := callStackTracer.HandleEnterEvent(event.PidTgid, funcName)
+			connection.Broadcast(broadcast.WsMessage{Type: "connection", Payload: callEvent, TraceId: unique_id.String()})
 		}
 	}
 
