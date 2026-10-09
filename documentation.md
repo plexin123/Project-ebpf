@@ -11,3 +11,5 @@
             - Function A: 15ms (total time)
                 - Function B: 10ms (child time)
                 - Self time of Function A: 5ms (total time - child time)
+
+    

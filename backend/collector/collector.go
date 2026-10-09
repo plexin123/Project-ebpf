@@ -27,15 +27,12 @@ type Latency_event struct {
 	Name_of_process [16]byte
 }
 
-type EnterEvent struct {
-	PidTgid     uint64
-	FuncAddress uint64
-}
-
+// Structure interface between kernel space and user space.
 type EnvelopedEvent struct {
 	EventType     uint8
 	PidTgid       uint64
 	FuncAddress   uint64
+	EnterTime     uint64
 	Latency_event Latency_event
 }
 
@@ -46,9 +43,11 @@ type FunctionStats struct {
 	baselinep95  uint64
 }
 
+// what is send to the Frontend structure
 type FunctionEvent struct {
 	FuncName   string  `json:"funcName"`
 	Duration   uint64  `json:"duration"`
+	SelfTime   uint64  `json:"selfTime"`
 	Status     Status  `json:"status"`
 	Baseline   uint64  `json:"baseline"`
 	Current    uint64  `json:"current"`
@@ -187,6 +186,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 
 			funcName, ok := register_map[event.FuncAddress]
 			currentTraceId := callStackTracer.Map_trace_id[event.PidTgid]
+			selftime := callStackTracer.SelfTimeCalculation(event.PidTgid, event.Latency_event.DurationsNS)
 			callStackTracer.HandleExitEvent(event.PidTgid)
 			if !ok {
 				continue
@@ -207,6 +207,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 					FuncName: funcName,
 					Duration: event.Latency_event.DurationsNS,
 					Current:  currentbaselinep95,
+					SelfTime: selftime,
 				}
 
 				if map_of_functions[funcName].baselineflag == false {

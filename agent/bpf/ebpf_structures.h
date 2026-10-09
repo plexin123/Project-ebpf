@@ -37,6 +37,7 @@ struct event{
     __u8  event_type; // 2 types -> entrance_event/ exit_event
     __u64 pid_tgid; // unique identifier of the proccess
     __u64 func_address; //memory address of func
+    __u64 time_stamp;// time the function has arrived/started
     struct latency_event latency_event;
 }__attribute__((packed));
 #endif

@@ -9,14 +9,13 @@ int trace_enter(struct pt_regs *ctx){
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     __u64 ts = bpf_ktime_get_ns();
     __u64 stack_pointer_id = PT_REGS_IP(ctx);
-
-
     //send data to ringbuf
     struct event *enter_event = bpf_ringbuf_reserve(&events, sizeof(struct event),0);
     if(enter_event){
         enter_event->event_type = 0;
         enter_event->pid_tgid = pid_tgid;
         enter_event->func_address = stack_pointer_id;
+        enter_event->time_stamp = ts
         bpf_ringbuf_submit(enter_event, 0);
     }
     bpf_map_update_elem(&start_times , &pid_tgid, &ts, BPF_ANY);
