@@ -33,15 +33,13 @@ func New() *CallStackTracer {
 	newCallStackTracer := &CallStackTracer{
 		Map_trace_id:      make(map[uint64]uuid.UUID),
 		Map_pid_gid_stack: make(map[uint64][]Record),
-		// BroadCaster:       br,
 	}
-
 	return newCallStackTracer
 }
 
 func (cst *CallStackTracer) SelfTimeCalculation(pid_gid, total_time uint64) uint64 {
-	// TO DO: Implementation of self function time without children/dependent
-	// each parent_func,sum_children_time
+	cst.Stack_mu.Lock()
+	defer cst.Stack_mu.Unlock()
 	current_stack := cst.Map_pid_gid_stack[pid_gid]
 	if len(current_stack) >= 2 {
 		current_stack[len(current_stack)-2].AccumulatedTime += total_time
@@ -90,5 +88,4 @@ func (cst *CallStackTracer) HandleExitEvent(pid_gid uint64) {
 	if len(cst.Map_pid_gid_stack[pid_gid]) == 0 {
 		delete(cst.Map_trace_id, pid_gid)
 	}
-
 }
