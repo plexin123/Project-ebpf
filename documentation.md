@@ -11,5 +11,14 @@
             - Function A: 15ms (total time)
                 - Function B: 10ms (child time)
                 - Self time of Function A: 5ms (total time - child time)
+*** 12 October 2026
+- Problem:
+    - Basically for golang, using PID + TGID + Memory pointer -> time:
+    - Doesnt work well in golang, because a go routine can extend their stack and
+    - Migrate the adress to a different one, so whenever we are looking for that specfic identifier
+    - Its not going to be found.
 
+-Solution:
+    - Instead of trying to make the calculation on the kernel side
+    - Just send the start , end time to the collector, and the backend will calculate the difference
     

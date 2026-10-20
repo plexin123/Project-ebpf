@@ -13,14 +13,6 @@ struct process_event {
 };
 #endif
 
-#ifndef __LATENCY_H
-#define __LATENCY_H
-struct latency_event{
-    __u64 durations_ns;
-    char name_of_process[16];
-};
-#endif
-
 #ifndef __MEMORY_MAP
 #define __MEMORY_MAP
 struct {
@@ -38,7 +30,6 @@ struct event{
     __u64 pid_tgid; // unique identifier of the proccess
     __u64 func_address; //memory address of func
     __u64 time_stamp;// time the function has arrived/started
-    struct latency_event latency_event;
 }__attribute__((packed));
 #endif
 

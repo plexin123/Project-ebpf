@@ -34,6 +34,7 @@ type EnvelopedEvent struct {
 	FuncAddress   uint64
 	EnterTime     uint64
 	Latency_event Latency_event
+	DurationNS    uint64
 }
 
 type FunctionStats struct {
@@ -172,7 +173,7 @@ func Collector(callStackTracer *callstack.CallStackTracer, db *database.Database
 		if err != nil {
 			break
 		}
-		var event EnvelopedEvent
+		var event EnvelopedEvent //
 		if err := binary.Read(
 			bytes.NewReader(record.RawSample),
 			binary.LittleEndian,

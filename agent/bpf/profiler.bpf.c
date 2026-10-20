@@ -8,46 +8,34 @@ SEC("uprobe")
 int trace_enter(struct pt_regs *ctx){
     __u64 pid_tgid = bpf_get_current_pid_tgid();
     __u64 ts = bpf_ktime_get_ns();
-    __u64 stack_pointer_id = PT_REGS_IP(ctx);
+    __u64 func_address = PT_REGS_IP(ctx);
     struct event *enter_event = bpf_ringbuf_reserve(&events, sizeof(struct event),0);
-    if(enter_event){
-        enter_event->event_type = 0;
-        enter_event->time_stamp = ts;
-        enter_event->pid_tgid = pid_tgid;
-        enter_event->func_address = stack_pointer_id;
-        bpf_ringbuf_submit(enter_event, 0);
+    if(!enter_event){
+        return 0;
     }
-    // bpf_map_update_elem(&start_times , &pid_tgid, &ts, BPF_ANY);
-    bpf_map_update_elem(&memory_map, &pid_tgid, &stack_pointer_id, BPF_ANY);
+    __builtin_memset(enter_event, 0, sizeof(*enter_event));
+    enter_event->event_type = 0;
+    enter_event->time_stamp = ts;
+    enter_event->pid_tgid = pid_tgid;
+    enter_event->func_address = func_address;
+    bpf_ringbuf_submit(enter_event, 0);
+    
     return 0;   
 }
 
 SEC("uretprobe")
 int trace_exit(struct pt_regs *ctx){
     __u64 pid_tgid = bpf_get_current_pid_tgid();
-    // __u64 *ts = bpf_map_lookup_elem(&start_times,&pid_tgid);
-    __u64 *stack_pointer_id = bpf_map_lookup_elem(&memory_map,&pid_tgid);
-    if(!ts){
+    __u64 exit_time = bpf_ktime_get_ns();
+    struct event *exit_event = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
+    if(!exit_event){
         return 0;
-    }
-    if(!stack_pointer_id){
-	return 0;
-    }
-    __u64 exit_time = bpf_ktime_get_ns()
-    bpf_map_delete_elem(&start_times, &pid_tgid);
-    bpf_map_delete_elem(&memory_map, &pid_tgid);
-    struct event *event = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
-    if(!event){
-        return 0;
-    }
-    event->event_type = 1;
-    event->time_stamp = ts;
-    event->pid_tgid = pid_tgid;
-    event->func_address = *stack_pointer_id; 
-    event->exit_time = exit_time;
-    bpf_get_current_comm(&event->latency_event.name_of_process, sizeof(event->latency_event.name_of_process));
-   
-    bpf_ringbuf_submit(event, 0);
+    }               // target, fill, size
+    __builtin_memset(exit_event, 0, sizeof(*exit_event));
+    exit_event->event_type = 1;
+    exit_event->time_stamp = exit_time;
+    exit_event->pid_tgid = pid_tgid;
+    bpf_ringbuf_submit(exit_event, 0);
     return 0;
 
 }
