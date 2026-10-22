@@ -9,13 +9,13 @@ pub struct UniqueKeyIdentifier{
 }
 
 pub struct CallStack{
-	map_trace_id   :  HashMap<UniqueKeyIdentifier, String>,
-	map_unique_key_stack: HashMap<UniqueKeyIdentifier, Vec<Frame>>,
+	pub map_trace_id   :  HashMap<UniqueKeyIdentifier, String>,
+	pub map_unique_key_stack: HashMap<UniqueKeyIdentifier, Vec<Frame>>,
 }
 
 pub struct CallEvent{
-	caller: String,
-	callee: String,
+	pub caller: String,
+	pub callee: String,
 }
 #[derive(Clone)]
 pub struct Frame{
