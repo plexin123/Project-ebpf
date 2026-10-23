@@ -1,0 +1,14 @@
+# binario: arma las piezas y elige qué adaptador usar
+[package]
+name = "agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+adapter = { version = "0.1.0", path = "adapter" }
+anyhow = "1.0.104"
+profiler-core = { version = "0.1.0", path = "profiler-core" }
+
+[workspace]
+resolver = "3"
+members = ["profiler-core", "adapter"]
