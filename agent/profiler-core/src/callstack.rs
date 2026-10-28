@@ -13,9 +13,17 @@ pub struct CallStack{
 	pub map_unique_key_stack: HashMap<UniqueKeyIdentifier, Vec<Frame>>,
 }
 
+// caller is empty when callee is the root of the stack
 pub struct CallEvent{
+	pub trace_id: String,
 	pub caller: String,
 	pub callee: String,
+}
+
+pub struct ExitEvent{
+	pub trace_id: String,
+	pub function: String,
+	pub self_time: u64,
 }
 #[derive(Clone)]
 pub struct Frame{
@@ -33,46 +41,46 @@ impl CallStack{
     }
 }
 
-    pub fn Enter(&mut self, identifier : UniqueKeyIdentifier ,children_function :String, enter_time : u64) -> Option<(CallEvent, String)> {
+    pub fn enter(&mut self, identifier : UniqueKeyIdentifier ,children_function :String, enter_time : u64) -> CallEvent {
 
         let current_stack = self.map_unique_key_stack.entry(identifier).or_insert_with(|| Vec::new());
-		let newFrame =  Frame {
+		let new_frame =  Frame {
 			name: children_function.clone(),
 			accumulated_time: 0,
 			time_stamp: enter_time
 		};
-        current_stack.push(newFrame);
+        current_stack.push(new_frame);
 		if current_stack.len() > 1{
 			let father_function = current_stack[current_stack.len() - 2].name.clone();
 			let current_uuid = self.map_trace_id[&identifier].clone();
-			return Some((CallEvent{caller: father_function, callee:children_function}, current_uuid));
+			return CallEvent { trace_id: current_uuid, caller: father_function, callee: children_function };
 		}
-		let uuid = Uuid::new_v4();
-		self.map_trace_id.insert(identifier, uuid.to_string());
-		None
+		// root of a new stack -> new trace
+		let uuid = Uuid::new_v4().to_string();
+		self.map_trace_id.insert(identifier, uuid.clone());
+		CallEvent { trace_id: uuid, caller: String::new(), callee: children_function }
     }
 
-    pub fn Exit(&mut self, identifier : UniqueKeyIdentifier, exit_time : u64) -> u64{
+    // None when there is no matching enter (e.g. the function was already running when the probes were attached)
+    pub fn exit(&mut self, identifier : UniqueKeyIdentifier, exit_time : u64) -> Option<ExitEvent>{
         // exit time when a function finishes
 		//  current stack
-		let current_stack = self.map_unique_key_stack.get_mut(&identifier).expect("not matching identifier in call stack");
-		let start_time = current_stack[current_stack.len() -1].time_stamp;
-		let total_time = exit_time - start_time;
-		if current_stack.len() >= 2{
-			let size = current_stack.len();
-			current_stack[size - 2].accumulated_time += total_time;
+		let current_stack = self.map_unique_key_stack.get_mut(&identifier)?;
+		let frame = current_stack.pop()?;
+		let total_time = exit_time - frame.time_stamp;
+		// the parent is now the top of the stack
+		if let Some(parent) = current_stack.last_mut(){
+			parent.accumulated_time += total_time;
 		}
-		let accumulated_time_children = current_stack[current_stack.len() -1].accumulated_time;
-		let self_time = total_time - accumulated_time_children;
-		// eliminate the last value in the stack
-		current_stack.pop();
+		let self_time = total_time - frame.accumulated_time;
+		let current_uuid = self.map_trace_id[&identifier].clone();
 		// remove key in the hashmap if the stack is empty
-		if current_stack.len() == 0{
+		if current_stack.is_empty(){
 			self.map_unique_key_stack.remove(&identifier);
 			self.map_trace_id.remove(&identifier);
 		}
-		
-		self_time
+
+		Some(ExitEvent { trace_id: current_uuid, function: frame.name, self_time })
     }
 
     

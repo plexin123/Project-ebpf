@@ -25,13 +25,24 @@ mod tests {
     fn call_stack_test(){
         let mut cs =callstack::CallStack::new();
         let k = callstack::UniqueKeyIdentifier{pid : 1, generic_key: 2};
-        cs.Enter(k, "A".into(), 0);
-        cs.Enter(k, "B".into(), 10);
-        assert_eq!(cs.Exit(k,30),20);
-        cs.Enter(k, "C".into(), 15);
-        assert_eq!(cs.Exit(k,35),20);
-        assert_eq!(cs.Exit(k,50),10);
-        
+        let root = cs.enter(k, "A".into(), 0);
+        assert_eq!(root.caller, "");
+        let edge = cs.enter(k, "B".into(), 10);
+        assert_eq!((edge.caller.as_str(), edge.callee.as_str()), ("A", "B"));
+        assert_eq!(edge.trace_id, root.trace_id);
+        assert_eq!(cs.exit(k,30).unwrap().self_time,20);
+        cs.enter(k, "C".into(), 15);
+        assert_eq!(cs.exit(k,35).unwrap().self_time,20);
+        let a = cs.exit(k,50).unwrap();
+        assert_eq!((a.function.as_str(), a.self_time), ("A", 10));
+
+    }
+
+    #[test]
+    fn exit_without_enter_is_none(){
+        let mut cs =callstack::CallStack::new();
+        let k = callstack::UniqueKeyIdentifier{pid : 1, generic_key: 2};
+        assert!(cs.exit(k, 10).is_none());
     }
 
 }

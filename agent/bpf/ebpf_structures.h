@@ -28,7 +28,7 @@ struct {
 struct event{
     __u8  event_type; // 2 types -> entrance_event/ exit_event
     __u64 pid_tgid; // unique identifier of the proccess
-    __u64 func_address; //memory address of func
+    __u64 cookie; // index into the agent's function table (set at attach time)
     __u64 time_stamp;// time the function has arrived/started
 }__attribute__((packed));
 #endif

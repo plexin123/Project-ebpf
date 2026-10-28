@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package profiler;
+
+import "google/protobuf/empty.proto";
+
+service RoutingFunctions{
+    rpc StreamingData(stream AgentEvent) returns (google.protobuf.Empty);
+}
+message AgentEvent{
+     oneof kind{
+        CallEdge edge = 1;
+        CallResult result = 2;
+    }
+}
+message CallEdge{
+      string trace_id = 1;
+      string caller = 2;
+      string callee = 3;
+      uint32 pid = 4;
+      uint32 tid = 5;
+}
+message CallResult{
+    string trace_id = 1;
+    string function = 2;
+    uint64 time_stamp = 3;
+    uint64 self_time_ns = 4;
+    uint32 pid = 5;
+    uint32 tid = 6;
+}
