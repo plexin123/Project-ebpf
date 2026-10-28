@@ -17,6 +17,17 @@ func New(DatabaseInstance *Database) *Service {
 	}
 }
 
+func (s *Service) Close() error {
+	err := s.database.db.Close()
+	if err != nil {
+		error_message := map[string]string{
+			"message": "Failed to close the database",
+		}
+		print(error_message)
+	}
+	return nil
+}
+
 func (s *Service) GetHistoryByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	amount_of_rows, err := strconv.Atoi(r.URL.Query().Get("rows"))
