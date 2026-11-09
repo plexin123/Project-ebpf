@@ -24,6 +24,7 @@ pub struct ExitEvent{
 	pub trace_id: String,
 	pub function: String,
 	pub self_time: u64,
+	pub total_time: u64,
 }
 #[derive(Clone)]
 pub struct Frame{
@@ -80,7 +81,7 @@ impl CallStack{
 			self.map_trace_id.remove(&identifier);
 		}
 
-		Some(ExitEvent { trace_id: current_uuid, function: frame.name, self_time })
+		Some(ExitEvent { trace_id: current_uuid, function: frame.name, self_time, total_time })
     }
 
     
