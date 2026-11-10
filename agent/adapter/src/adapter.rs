@@ -1,30 +1,30 @@
-
-use std::fs;
-use std::io::Error;
-use std::os::fd::AsRawFd;
-use profiler_core::callstack::UniqueKeyIdentifier;
 use anyhow::{Context, Result, bail};
 use aya::Ebpf;
 use aya::maps::{MapData, RingBuf};
 use aya::programs::UProbe;
 use aya::programs::uprobe::{UProbeAttachLocation, UProbeAttachPoint, UProbeScope};
+use libc::{POLLIN, poll, pollfd, quotactl};
 use object::{Object, ObjectSymbol, SymbolKind};
+use profiler_core::callstack::UniqueKeyIdentifier;
 use rustc_demangle::demangle;
-use libc::{POLLIN, poll, pollfd};
+use std::io::Error;
+use std::os::fd::AsRawFd;
+use std::{fs, vec};
 
 // datos propios (String, u64): no dependen del Vec<u8> que lee scan
 pub struct FunctionInfo {
     pub mangled_name: String,   // para attach
     pub demangled_name: String, // para mostrar / filtrar
     pub address: u64,
+    
 }
-
 
 pub trait Adapter {
     fn scan(&mut self) -> Result<()>;
     fn map(&mut self) -> Result<()>;
     // bloquea hasta que llegue un evento
     fn reader(&mut self) -> Result<FunctionEvent>;
+    fn parse_bytes(&mut self) -> FunctionEvent;
 }
 
 // valores de event_type escritos por profiler.bpf.c
@@ -33,7 +33,6 @@ pub enum EventType {
     Enter,
     Exit,
 }
-
 impl TryFrom<u8> for EventType {
     type Error = anyhow::Error;
     fn try_from(value: u8) -> Result<Self> {
@@ -53,24 +52,22 @@ pub struct RustAdapter {
     ring_buffer: RingBuf<MapData>,
 }
 
-pub struct FunctionEvent{
+pub struct FunctionEvent {
     pub event_type: EventType,
-    pub thread_id : u32,
-    pub process_id : u32,
-    pub unique_identifier : UniqueKeyIdentifier,
+    pub thread_id: u32,
+    pub process_id: u32,
+    pub unique_identifier: UniqueKeyIdentifier,
     pub func_name: String,
     pub time_stamp: u64,
-
 }
-
-
 
 impl RustAdapter {
     pub fn new(binary_path: String, bpf_path: &str, crate_prefix: String) -> Result<Self> {
-        let mut ebpf = Ebpf::load_file(bpf_path)
-            .with_context(|| format!("no se pudo cargar {bpf_path}"))?;
+        let mut ebpf =
+            Ebpf::load_file(bpf_path).with_context(|| format!("no se pudo cargar {bpf_path}"))?;
         // take_map antes de mover ebpf al struct
-        let ring_buffer = RingBuf::try_from(ebpf.take_map("events").context("there is not map events")?)?;
+        let ring_buffer =
+            RingBuf::try_from(ebpf.take_map("events").context("there is not map events")?)?;
         Ok(Self {
             ebpf,
             binary_path,
@@ -81,29 +78,24 @@ impl RustAdapter {
     }
 }
 
-pub fn wait_readable(fd : i32) -> Result<()>{
-        let mut fds: [pollfd; 1] = [pollfd{
-            fd : fd,
-            events : POLLIN,
-            revents : 0,
-        }];
-        let timeout = 5000;
-        let ret = unsafe {
-            poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout)
-        };
-        if ret == -1{
-            let err = Error::last_os_error();
-            if err.kind() ==  std::io::ErrorKind::Interrupted{
-                return Ok(());
-            }
-            return Err(err.into());
+pub fn wait_readable(fd: i32) -> Result<()> {
+    let mut fds: [pollfd; 1] = [pollfd {
+        fd: fd,
+        events: POLLIN,
+        revents: 0,
+    }];
+    let timeout = 5000;
+    let ret = unsafe { poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout) };
+    if ret == -1 {
+        let err = Error::last_os_error();
+        if err.kind() == std::io::ErrorKind::Interrupted {
+            return Ok(());
         }
-        // ret == 0 -> timeout, ret > 0 -> data; the caller just tries to read again
-        Ok(())
+        return Err(err.into());
     }
-
-
-
+    // ret == 0 -> timeout, ret > 0 -> data; the caller just tries to read again
+    Ok(())
+}
 
 impl Adapter for RustAdapter {
     // leer los simbolos del binario que se va a perfilar
@@ -152,37 +144,114 @@ impl Adapter for RustAdapter {
         }
         Ok(())
     }
-    fn reader(&mut self) -> Result<FunctionEvent>{
+    fn reader(&mut self) -> Result<FunctionEvent> {
         let fd_ring = self.ring_buffer.as_raw_fd();
-        loop{
+        loop {
             // sleep when there is no data
             wait_readable(fd_ring)?;
-            if let Some(item) = self.ring_buffer.next(){
+            if let Some(item) = self.ring_buffer.next() {
                 // struct event (packed): u8 event_type | u64 pid_tgid | u64 cookie | u64 time_stamp
                 if item.len() < 25 {
                     bail!("short event: {} bytes", item.len());
                 }
-                let event_type = EventType::try_from(item[0])?;
-                // pid_tgid: low 32 bits = tid, high 32 bits = tgid (the pid in user space)
-                let thread_id  = u32::from_le_bytes(item[1..5].try_into()?);
-                let process_id = u32::from_le_bytes(item[5..9].try_into()?);
-                let cookie = u64::from_le_bytes(item[9..17].try_into()?);
-                let time_stamp = u64::from_le_bytes(item[17..25].try_into()?);
-                let identifier = UniqueKeyIdentifier { pid: process_id, generic_key: thread_id };
-                let func_name = self.functions.get(cookie as usize)
-                    .with_context(|| format!("cookie {cookie} is not in the function table"))?
-                    .demangled_name.clone();
-                return Ok(FunctionEvent{
-                    event_type,
-                    thread_id,
-                    process_id,
-                    unique_identifier : identifier,
-                    func_name,
-                    time_stamp,
-                });
+                let function_event = parse_bytes(item);
+                return Ok(function_event);
             }
         }
     }
+
+
+    fn parse_bytes(&mut self, bytes: &[u8]) -> FunctionEvent {
+        let event_type = EventType::try_from(bytes[0])?;
+        let thread_id = u32::from_le_bytes(item[1..5].try_into()?);
+        let process_id = u32::from_le_bytes(item[5..9].try_into()?);
+        let cookie = u64::from_le_bytes(item[9..17].try_into()?);
+        let time_stamp = u64::from_le_bytes(item[17..25].try_into()?);
+        let identifier = UniqueKeyIdentifier {
+            pid: process_id,
+            generic_key: thread_id,
+        };
+        let func_name = self
+            .functions
+            .get(cookie as usize)
+            .with_context(|| format!("cookie {cookie} is not in the function table"))?
+            .demangled_name
+            .clone();
+        return (FunctionEvent {
+            event_type,
+            thread_id,
+            process_id,
+            unique_identifier: identifier,
+            func_name,
+            time_stamp,
+        });
+}
+}
+// 1731024000,18.5,82,3.4";
+fn parse_text(mut string: &str) -> bool {
+    let vector = string.split(",").collect();
+    let event_type: EventType = EventType::try_from(vector[0]);
+    let thread_id: u32 = mock_parse(vector[1]);
+    let process_id: u32 = mock_parse(vector[2]);
+    let cookie: u64 = vector[3].parse::<u64>().unwrap();
+    let time_stamp: u32 = vector[4].parse::<u32>().unwrap();
+
+    True
 }
 
+fn mock_parse(string: &str) -> u32 {
+    let mut total: u32 = 0;
+    let length = string.len();
+    for (index, byte) in string.bytes().rev().enumerate() {
+        let digit = (byte - b'0') as u32;
+        total = digit * 10_i32(index as u32) + total;
+    }
+    total
+}
+#[cfg(test)]
+mod test {
+    use std::{f64::consts::E, iter::Map, print, println};
 
+    // create unit testing
+    use super::*;
+    #[test]
+    fn test_a() {
+        let byte_string: &[u8] = b"apple";
+        let function_event: FunctionEvent = parse_bytes(byte_string);
+    }
+    #[test]
+    fn test_b() {
+        let byte_string: &[u8] = b"name=Mateo,age=12,height=23";
+        let function_event: FunctionEvent = parse_bytes(byte_string);
+    }
+    #[test]
+    fn test_c() {
+        let byte_string: &[u8] = b"12234";
+        let function_event: FunctionEvent = parse_bytes(byte_string);
+    }
+    #[test]
+    fn test_d() {
+        let bytes: &[u8] = &[0x34, 0x12, 0xA, 0x23];
+        // let character_a = bytes[0].to_ascii_lowercase();
+        // let character_b = bytes[1].to_ascii_lowercase();
+        // print!("This is the character = {:?},"character_a);
+        // print!("This is the character = {:?}," character_b);
+        let mut word = "";
+        for byte in bytes {
+            // convert the charq
+            let character = *byte as char;
+            word += character;
+            println!("This is a formation of a word :{} ", word);
+        }
+
+        let function_event: FunctionEvent = parse_bytes(bytes);
+    }
+    #[test]
+    fn test_e() {
+        let fat_pointer: &str = "1731024000,18.5,82,3.4";
+        let vector: Vec<&str> = fat_pointer.split(",").collect();
+        let name: &str = vector[0];
+        let attempt = vector[1].parse::<i32>().unwrap();
+        let score = vector[2].parse::<f32>().unwrap();
+    }
+}

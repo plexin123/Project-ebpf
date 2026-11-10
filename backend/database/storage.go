@@ -36,6 +36,7 @@ const (
 func Open(path string) (*Database, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
+
 		log.Fatalf("Was not able to open database %v", err)
 	}
 

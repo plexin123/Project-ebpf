@@ -2,6 +2,7 @@ use adapter::adapter::{Adapter, EventType, RustAdapter};
 use anyhow::{Context, Result};
 use profiler::{AgentEvent, CallEdge, CallResult, agent_event::Kind, routing_functions_client::RoutingFunctionsClient};
 use profiler_core::callstack::CallStack;
+
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -53,7 +54,8 @@ async fn main() -> Result<()> {
                         trace_id: result.trace_id,
                         function: result.function,
                         time_stamp: data.time_stamp,
-                        self_time_ns: result.self_time,
+                        self_time: result.self_time,
+                        total_time: result.total_time,
                         pid: data.process_id,
                         tid: data.thread_id,
                     })

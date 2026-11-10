@@ -3,7 +3,8 @@ use std::{f64::consts::E, iter::Map, print, println};
 use anyhow::bail;
 #[cfg(test)]
 mod tests {
-    use std::default;
+    use core::time;
+use std::{default, vec};
 
 use super::*;
     #[test]
@@ -76,35 +77,50 @@ fn parse_bytes(bytes: &[u8]) -> MockData {
       
 }
 // 1731024000,18.5,82,3.4";
-fn parse_text(mut string: &str) -> bool {
+fn parse_text(string: &str) -> MockData {
+    
     let vector: Vec<&str>= string.split(",").collect();
-    // let event_type: EventType = EventType::try_from(mock_parse());
-    let thread_id: u32 = mock_parse(vector[1]);
-    let process_id: u32 = mock_parse(vector[2]);
-    let cookie: u64 = vector[3].parse::<u64>().unwrap();
-    let time_stamp: u32 = mock_parse(vector[4]);
+    // let event_type: EventType = EventType::try_from(mock_parse(vector[0]));
+    let thread_id: u32 = mock_parse(vector[1]) as u32;
+    let process_id: u32 = mock_parse(vector[2]) as u32;
+    let cookie: u64 = mock_parse(vector[3]);
+    let time_stamp: u64 = mock_parse(vector[4]);
 
-    true
+    MockData{
+        event_type : EventType::Enter,
+        thread_id : thread_id,
+        process_id : process_id,
+        cookie : cookie,
+        time_stamp : time_stamp,  
+    }
 }
 
-fn mock_parse(string: &str) -> u32 {
-    let mut total: u32 = 0;
+fn mock_parse(string: &str) -> u64{
+    let mut total: u64 = 0;
     for (index, byte) in string.bytes().rev().enumerate() {
-        let digit = (byte - b'0') as u32;
-        total = digit * 10_u32.pow(index as u32) + total;
+        let digit = (byte - b'0') as u64;
+        total = digit * 10_u64.pow(index as u32) + total;
     }
     total
 }
 
 #[test]
-fn test_a() {
+    fn test_parsing_bytes() {
     let bytes: [u8; 28] = [
-        1, 43, 0, 0, 0, 0, 0, 0, 51, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0,
+        1, 43, 0, 0, 0, 176,1,0 , 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0,
     ];
     let data : MockData= parse_bytes(&bytes);
     print!("{:?}" , data);
     assert_eq!(data.event_type, EventType::Exit)
 }
+#[test]
+
+    fn test_parsing_text(){
+        let text = "1731024000,185,82,34,1123";
+        let mock_data = parse_text(text);
+        print!("{:?}", mock_data);
+        assert_eq!(mock_data.process_id, 82);
+    }
 
 
 }
