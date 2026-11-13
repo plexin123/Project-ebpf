@@ -170,5 +170,39 @@ mod call_stack_test {
         let k =UniqueKeyIdentifier{pid : 1, generic_key: 2};
         assert!(cs.exit(k, 10).is_none());
     }
+
+    #[test]
+    fn two_threads(){
+        let mut call_stack = CallStack::new();
+        let thread_1_a = UniqueKeyIdentifier{pid : 1 , generic_key : 2};
+
+        
+        let thread_2_a = UniqueKeyIdentifier{pid: 1, generic_key : 3};
+
+        
+        call_stack.enter(thread_1_a, "func_a".to_string(), 3);
+        call_stack.enter(thread_2_a, "func_b".to_string(),3);
+        call_stack.enter(thread_1_a,"func_c".to_string(),6);
+        call_stack.enter(thread_2_a,"func_d".to_string(),7 );
+
+        assert_eq!(call_stack.exit(thread_1_a, 7).unwrap().self_time,1);
+        assert_eq!(call_stack.exit(thread_2_a, 9).unwrap().self_time,2);
+        
+        assert_eq!(call_stack.exit(thread_1_a, 12).unwrap().self_time,8);
+        assert_eq!(call_stack.exit(thread_2_a, 15).unwrap().self_time,10);
+    }
 	
+    #[test]
+    fn recursion_calling_itself(){
+        let mut call_stack = CallStack::new();
+        let thread_1 = UniqueKeyIdentifier{pid : 1 ,generic_key : 2};
+        call_stack.enter(thread_1, "func_a".to_string(), 3);
+        call_stack.enter(thread_1,"func_a".to_string(), 5 );
+        assert_eq!(call_stack.exit(thread_1,7).unwrap().self_time, 2);
+        assert_eq!(call_stack.exit(thread_1,10).unwrap().self_time,5);
+        }
 }
+
+// total = 12 - 3 - (sum of the time of the children)
+// total = 9 - 1 = 8
+// total = 15 - 3 - 2 = 10

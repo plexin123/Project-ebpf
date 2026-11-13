@@ -46,6 +46,9 @@ fn parse_bytes(bytes: &[u8]) -> MockData {
         time_stamp,
     }
 }
+
+
+
 fn parse_text(text: &str) -> MockData {
     let vector: Vec<&str> = text.split(",").collect();
     // let event_type: EventType = EventType::try_from(mock_parse(vector[0]));
