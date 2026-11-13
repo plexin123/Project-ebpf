@@ -162,4 +162,13 @@ mod call_stack_test {
 		assert_eq!(stack.exit(unique_key_a,30).unwrap().self_time,17);
 
     }
+
+
+    #[test]
+    fn exit_without_enter_is_none(){
+        let mut cs =CallStack::new();
+        let k =UniqueKeyIdentifier{pid : 1, generic_key: 2};
+        assert!(cs.exit(k, 10).is_none());
+    }
+	
 }
