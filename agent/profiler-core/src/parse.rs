@@ -4,8 +4,8 @@ use anyhow::{Context, bail};
 
 #[derive(Debug)]
 pub struct MockData {
-    event_type: EventType,
-    thread_id: u32,
+    pub event_type: EventType,
+    pub thread_id: u32,
     process_id: u32,
     cookie: u64,
     time_stamp: u64,
