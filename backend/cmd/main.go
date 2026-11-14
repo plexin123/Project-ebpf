@@ -16,8 +16,6 @@ import (
 	"ebpf-project/backend/database"
 	pb "ebpf-project/backend/pb"
 
-	"debug/buildinfo"
-
 	"google.golang.org/grpc"
 )
 
@@ -25,17 +23,8 @@ func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("usage: %s <target-binary>", os.Args[0])
 	}
-	target_path := os.Args[1]
-	info, err := buildinfo.ReadFile(target_path)
-	if err != nil {
-		log.Fatalf("Could not read the targeted file %s: %v", target_path, err)
-	}
-	commit_hash := ""
-	for _, val := range info.Settings {
-		if val.Key == "vcs.revision" {
-			commit_hash = val.Value
-		}
-	}
+	commit_hash := os.Args[1]
+
 	PATH := "./data/app.db"
 	connectionStructure := broadcast.New()
 	databaseInstance, err := database.Open(PATH)

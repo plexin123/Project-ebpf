@@ -175,11 +175,9 @@ mod call_stack_test {
     fn two_threads(){
         let mut call_stack = CallStack::new();
         let thread_1_a = UniqueKeyIdentifier{pid : 1 , generic_key : 2};
-
         
         let thread_2_a = UniqueKeyIdentifier{pid: 1, generic_key : 3};
 
-        
         call_stack.enter(thread_1_a, "func_a".to_string(), 3);
         call_stack.enter(thread_2_a, "func_b".to_string(),3);
         call_stack.enter(thread_1_a,"func_c".to_string(),6);
@@ -201,6 +199,8 @@ mod call_stack_test {
         assert_eq!(call_stack.exit(thread_1,7).unwrap().self_time, 2);
         assert_eq!(call_stack.exit(thread_1,10).unwrap().self_time,5);
         }
+    // #[test]
+    // fn time_sta
 }
 
 // total = 12 - 3 - (sum of the time of the children)
