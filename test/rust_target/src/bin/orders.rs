@@ -12,7 +12,7 @@ use std::hint::black_box;
 use std::thread;
 
 // set to true, commit and rebuild to simulate a regression in find_customer
-const SLOW_LOOKUP: bool = false;
+const SLOW_LOOKUP: bool = true;
 
 const WORKERS: u64 = 3;
 const ORDERS_PER_WORKER: u64 = 20;
