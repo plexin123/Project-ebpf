@@ -10,6 +10,10 @@ baseline — tagged with the commit that produced the binary.
 target binary ──uprobes──▶ agent (Rust/aya) ──gRPC :50051──▶ backend (Go) ──WebSocket :8080──▶ UI (React/D3)
 ```
 
+
+https://github.com/user-attachments/assets/adec1ba3-ec4d-45b4-9393-35a781e7e66d
+
+
 ## How it works
 
 1. **Scan** — the agent (`agent/adapter`) reads the target's ELF symbol
