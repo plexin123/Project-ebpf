@@ -13,9 +13,12 @@ type D3State = {
     nodesArr: SimNode[]
     linksById: Map<string, SimLink>
     linksArr: SimLink[]
+    groupLayer: d3.Selection<SVGGElement, unknown, null, undefined>
     nodeLayer: d3.Selection<SVGGElement, unknown, null, undefined>
     edgeLayer: d3.Selection<SVGGElement, unknown, null, undefined>
 }
+
+type ProcessCircle = { x: number; y: number; r: number }
 
 function statusVar(status: GraphNode['status']): string {
     switch (status) {
@@ -31,14 +34,66 @@ function shortName(name: string): string {
 }
 
 const NODE_RADIUS = 16
+// room for the node label (dy 28) and a bit of air inside the process circle
+const PROCESS_PADDING = 40
 
-export function CallGraph({ graphState }: { graphState: GraphState | undefined }) {
+function centroids(nodes: SimNode[]): Map<number, { x: number; y: number }> {
+    const sums = new Map<number, { x: number; y: number; n: number }>()
+    for (const d of nodes) {
+        const s = sums.get(d.pid) ?? { x: 0, y: 0, n: 0 }
+        s.x += d.x ?? 0
+        s.y += d.y ?? 0
+        s.n += 1
+        sums.set(d.pid, s)
+    }
+    const centers = new Map<number, { x: number; y: number }>()
+    for (const [pid, s] of sums) centers.set(pid, { x: s.x / s.n, y: s.y / s.n })
+    return centers
+}
+
+// smallest circle around the centroid that contains every node of the process
+function processCircles(nodes: SimNode[]): Map<number, ProcessCircle> {
+    const centers = centroids(nodes)
+    const circles = new Map<number, ProcessCircle>()
+    for (const [pid, c] of centers) circles.set(pid, { x: c.x, y: c.y, r: 0 })
+    for (const d of nodes) {
+        const c = circles.get(d.pid)!
+        const dist = Math.hypot((d.x ?? 0) - c.x, (d.y ?? 0) - c.y)
+        c.r = Math.max(c.r, dist)
+    }
+    for (const c of circles.values()) c.r += NODE_RADIUS + PROCESS_PADDING
+    return circles
+}
+
+// pulls every node toward the centroid of its process: threads of one process
+// stay inside one circle, different processes drift apart (charge does the rest)
+function clusterForce(strength: number) {
+    let nodes: SimNode[] = []
+    function force(alpha: number) {
+        const centers = centroids(nodes)
+        for (const d of nodes) {
+            const c = centers.get(d.pid)!
+            d.vx = (d.vx ?? 0) - ((d.x ?? 0) - c.x) * strength * alpha
+            d.vy = (d.vy ?? 0) - ((d.y ?? 0) - c.y) * strength * alpha
+        }
+    }
+    force.initialize = (ns: SimNode[]) => { nodes = ns }
+    return force
+}
+
+export function CallGraph({ processes }: { processes: Map<number, GraphState> }) {
     const svgRef = useRef<SVGSVGElement | null>(null)
     const wrapRef = useRef<HTMLDivElement | null>(null)
     const d3Ref = useRef<D3State | null>(null)
 
-    const nodes = useMemo(() => toGraphNodes(graphState), [graphState])
-    const links = useMemo(() => toGraphLinks(graphState), [graphState])
+    const nodes = useMemo(
+        () => Array.from(processes).flatMap(([pid, graph]) => toGraphNodes(graph, pid)),
+        [processes]
+    )
+    const links = useMemo(
+        () => Array.from(processes).flatMap(([pid, graph]) => toGraphLinks(graph, pid)),
+        [processes]
+    )
 
     // mount: create the simulation and DOM layers once
     useEffect(() => {
@@ -58,6 +113,8 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
             .attr('fill', 'var(--edge)')
 
         const zoomLayer = svg.append('g').attr('class', 'zoom-layer')
+        // first child = drawn underneath edges and nodes
+        const groupLayer = zoomLayer.append('g').attr('class', 'group-layer')
         const edgeLayer = zoomLayer.append('g').attr('class', 'edge-layer')
         const nodeLayer = zoomLayer.append('g').attr('class', 'node-layer')
 
@@ -74,6 +131,7 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
             .force('link', d3.forceLink<SimNode, SimLink>([]).id(d => d.id).distance(110).strength(0.5))
             .force('center', d3.forceCenter(0, 0))
             .force('collide', d3.forceCollide(42))
+            .force('cluster', clusterForce(0.15))
             .on('tick', ticked)
 
         const state: D3State = {
@@ -82,6 +140,7 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
             nodesArr: [],
             linksById: new Map(),
             linksArr: [],
+            groupLayer,
             nodeLayer,
             edgeLayer
         }
@@ -104,6 +163,19 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
                 })
             state.nodeLayer.selectAll<SVGGElement, SimNode>('.node-group')
                 .attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
+
+            const circles = processCircles(state.nodesArr)
+            const groups = state.groupLayer.selectAll<SVGGElement, number>('.process-group')
+            groups.select<SVGCircleElement>('.process-circle')
+                .attr('cx', pid => circles.get(pid)?.x ?? 0)
+                .attr('cy', pid => circles.get(pid)?.y ?? 0)
+                .attr('r', pid => circles.get(pid)?.r ?? 0)
+            groups.select<SVGTextElement>('.process-label')
+                .attr('x', pid => circles.get(pid)?.x ?? 0)
+                .attr('y', pid => {
+                    const c = circles.get(pid)
+                    return c ? c.y - c.r - 6 : 0
+                })
         }
 
         function resize() {
@@ -180,7 +252,15 @@ export function CallGraph({ graphState }: { graphState: GraphState | undefined }
 
         const nodeMerged = nodeEnter.merge(nodeSel)
         nodeMerged.select<SVGCircleElement>('.node-circle').attr('stroke', (d) => statusVar(d.status))
-        nodeMerged.select<SVGTextElement>('.node-label').text((d) => shortName(d.id))
+        nodeMerged.select<SVGTextElement>('.node-label').text((d) => shortName(d.name))
+
+        const pids = Array.from(new Set(state.nodesArr.map((d) => d.pid)))
+        const groupSel = state.groupLayer.selectAll<SVGGElement, number>('.process-group')
+            .data(pids, (d) => d as number)
+        const groupEnter = groupSel.enter().append('g').attr('class', 'process-group')
+        groupEnter.append('circle').attr('class', 'process-circle')
+        groupEnter.append('text').attr('class', 'process-label').text((pid) => `pid ${pid}`)
+        groupSel.exit().remove()
 
         if (structureChanged) {
             state.simulation.nodes(state.nodesArr)
