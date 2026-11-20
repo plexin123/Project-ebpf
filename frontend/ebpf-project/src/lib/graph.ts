@@ -1,14 +1,15 @@
 import type { CallEvent, FunctionEvent } from '../types/events'
 import type { GraphState, TracesState } from '../state/graphReduce'
 
-    export function add_edge(state: TracesState , callEvent: CallEvent, traceId: string, pid: number) : TracesState{
+    export function add_edge(state: TracesState , callEvent: CallEvent, traceId: string, pid: number, tid: number) : TracesState{
         const newState = new Map(state)
         let currentGraphState =  newState.get(traceId)
         if (!currentGraphState){
             currentGraphState = {
                 edges: new Map<string, string[]>(),
                 node: new Map<string, FunctionEvent[]>(),
-                pid
+                pid,
+                tid
             }
             newState.set(traceId, currentGraphState)
         }
@@ -16,7 +17,8 @@ import type { GraphState, TracesState } from '../state/graphReduce'
               currentGraphState = {
                 edges : new Map(currentGraphState.edges),
                 node : new Map(currentGraphState.node),
-                pid : currentGraphState.pid
+                pid : currentGraphState.pid,
+                tid : currentGraphState.tid
             }
             newState.set(traceId, currentGraphState)
         }
@@ -32,14 +34,15 @@ import type { GraphState, TracesState } from '../state/graphReduce'
     }
 
 
-    export function upsert_node(state: TracesState, functionEvent: FunctionEvent, traceId: string, pid: number): TracesState{
+    export function upsert_node(state: TracesState, functionEvent: FunctionEvent, traceId: string, pid: number, tid: number): TracesState{
         const newState = new Map(state)
         let currentGraphState =  newState.get(traceId)
         if (!currentGraphState){
             currentGraphState = {
                 edges: new Map<string, string[]>(),
                 node: new Map<string, FunctionEvent[]>(),
-                pid
+                pid,
+                tid
             }
             newState.set(traceId, currentGraphState)
         }
@@ -47,7 +50,8 @@ import type { GraphState, TracesState } from '../state/graphReduce'
             currentGraphState = {
                 edges : new Map(currentGraphState.edges),
                 node : new Map(currentGraphState.node),
-                pid : currentGraphState.pid
+                pid : currentGraphState.pid,
+                tid : currentGraphState.tid
             }
             newState.set(traceId, currentGraphState)
         }
@@ -64,41 +68,54 @@ import type { GraphState, TracesState } from '../state/graphReduce'
 
     }
 
-export type GraphNode = {
-    // `${pid}:${name}` -- the same function in two processes is two nodes
-    id: string
+// one function in a thread's call tree; the same function can appear under
+// several parents (e.g. checksum under validate_order and save_order)
+export type CallTreeNode = {
     name: string
-    pid: number
-    status: FunctionEvent['status'] | 'unknown'
-    duration: number
-    driftPct: number
-    callCount: number
+    latest?: FunctionEvent
+    // calls itself or an ancestor: drawn as a badge instead of an endless branch
+    recursive: boolean
+    children: CallTreeNode[]
 }
 
-export type GraphLink = {
-    id: string
-    source: string
-    target: string
+export type ThreadLane = {
+    tid: number
+    roots: CallTreeNode[]
+}
+
+export type ProcessView = {
+    pid: number
+    label: string
+    threads: ThreadLane[]
 }
 
 export function mergeTraces(traces: TracesState): GraphState {
     return mergeGraphs(traces.values())
 }
 
-// one merged graph per process, so the call graph can draw a circle around each
-export function mergeTracesByPid(traces: TracesState): Map<number, GraphState> {
-    const groups = new Map<number, GraphState[]>()
+// process -> thread -> call tree, sorted by pid/tid so the layout doesn't jump around
+export function buildProcessViews(traces: TracesState): ProcessView[] {
+    const byProcess = new Map<number, Map<number, GraphState[]>>()
     for (const graphState of traces.values()) {
         const pid = graphState.pid ?? 0
-        const group = groups.get(pid) ?? []
+        const tid = graphState.tid ?? 0
+        const threads = byProcess.get(pid) ?? new Map<number, GraphState[]>()
+        const group = threads.get(tid) ?? []
         group.push(graphState)
-        groups.set(pid, group)
+        threads.set(tid, group)
+        byProcess.set(pid, threads)
     }
-    const byPid = new Map<number, GraphState>()
-    for (const [pid, group] of groups) {
-        byPid.set(pid, { ...mergeGraphs(group), pid })
+
+    const views: ProcessView[] = []
+    for (const [pid, threads] of byProcess) {
+        const lanes: ThreadLane[] = []
+        for (const [tid, graphs] of threads) {
+            lanes.push({ tid, roots: callTrees(mergeGraphs(graphs)) })
+        }
+        lanes.sort((a, b) => a.tid - b.tid)
+        views.push({ pid, label: processLabel(pid, lanes), threads: lanes })
     }
-    return byPid
+    return views.sort((a, b) => a.pid - b.pid)
 }
 
 function mergeGraphs(graphs: Iterable<GraphState>): GraphState {
@@ -113,7 +130,7 @@ function mergeGraphs(graphs: Iterable<GraphState>): GraphState {
                 if (!existing.includes(child )){
                     existing.push(child)
                 }
-            }   
+            }
             merged.edges.set(father, [...existing])
         }
         for (const [funcName, history] of graphState.node) {
@@ -124,54 +141,46 @@ function mergeGraphs(graphs: Iterable<GraphState>): GraphState {
     return merged
 }
 
-export function nodeId(pid: number, funcName: string): string {
-    return `${pid}:${funcName}`
-}
-
-export function toGraphNodes(graphState: GraphState | undefined, pid: number): GraphNode[] {
-    if (!graphState) return []
-    const nodes = new Map<string, GraphNode>()
-    const unknown = (name: string): GraphNode =>
-        ({ id: nodeId(pid, name), name, pid, status: 'unknown', duration: 0, driftPct: 0, callCount: 0 })
-
-    for (const [funcName, history] of graphState.node) {
-        const latest = history[history.length - 1]
-        nodes.set(funcName, {
-            id: nodeId(pid, funcName),
-            name: funcName,
-            pid,
-            status: latest.status,
-            duration: latest.duration,
-            driftPct: latest.driftPct,
-            callCount: history.length
-        })
-    }
-
-    // a function can appear as caller/callee before its own FunctionEvent arrives
-    for (const [father, children] of graphState.edges) {
-        if (!nodes.has(father)) {
-            nodes.set(father, unknown(father))
-        }
+// roots are the functions nobody calls inside this thread (the backend drops
+// the "" -> root edge, so a root only shows up as a node or as a caller)
+function callTrees(graph: GraphState): CallTreeNode[] {
+    const names = new Set<string>(graph.node.keys())
+    const callees = new Set<string>()
+    for (const [caller, children] of graph.edges) {
+        names.add(caller)
         for (const child of children) {
-            if (!nodes.has(child)) {
-                nodes.set(child, unknown(child))
+            names.add(child)
+            if (child !== caller) callees.add(child)
+        }
+    }
+    let roots = [...names].filter((name) => !callees.has(name))
+    // everything is part of a cycle: start anywhere
+    if (roots.length === 0) roots = [...names].slice(0, 1)
+
+    const build = (name: string, path: Set<string>): CallTreeNode => {
+        const history = graph.node.get(name)
+        const node: CallTreeNode = { name, latest: history?.[history.length - 1], recursive: false, children: [] }
+        path.add(name)
+        for (const child of graph.edges.get(name) ?? []) {
+            if (path.has(child)) {
+                node.recursive = true
+                continue
             }
+            node.children.push(build(child, path))
         }
+        path.delete(name)
+        return node
     }
-
-    return Array.from(nodes.values())
+    return roots.map((root) => build(root, new Set()))
 }
 
-export function toGraphLinks(graphState: GraphState | undefined, pid: number): GraphLink[] {
-    if (!graphState) return []
-    const links: GraphLink[] = []
-    for (const [father, children] of graphState.edges) {
-        for (const child of children) {
-            const source = nodeId(pid, father)
-            const target = nodeId(pid, child)
-            links.push({ id: `${source}->${target}`, source, target })
+// "orders · pid 4121": the crate name comes from the Rust symbol prefix (orders::...)
+function processLabel(pid: number, lanes: ThreadLane[]): string {
+    for (const lane of lanes) {
+        for (const root of lane.roots) {
+            const sep = root.name.indexOf('::')
+            if (sep > 0) return `${root.name.slice(0, sep)} · pid ${pid}`
         }
     }
-    return links
+    return `pid ${pid}`
 }
-

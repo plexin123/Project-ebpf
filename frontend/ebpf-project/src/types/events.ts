@@ -21,4 +21,5 @@ export type WSMessage = {
   payload: FunctionEvent | CallEvent;
   traceId : string
   pid: number
+  tid: number
 };

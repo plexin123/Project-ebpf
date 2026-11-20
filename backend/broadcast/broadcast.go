@@ -19,6 +19,7 @@ type WsMessage struct {
 	Payload any    `json:"payload"`
 	TraceId string `json:"traceId"`
 	Pid     uint32 `json:"pid"`
+	Tid     uint32 `json:"tid"`
 }
 
 func New() *ConnectionStructure {

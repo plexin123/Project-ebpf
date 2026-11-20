@@ -10,7 +10,7 @@ import { WebsocketConnectionEntrance } from '../hooks/useWebsockets'
 import { ConvertIntoMilliSeconds } from '../lib/format'
 import { useGraph } from '../state/GraphContext'
 import { CallEvent, FunctionEvent, WSMessage } from '../types/events'
-import { mergeTraces, mergeTracesByPid } from '../lib/graph'
+import { buildProcessViews, mergeTraces } from '../lib/graph'
 import { CallGraph } from './CallGraph'
 import './Dashboard.css'
 
@@ -27,12 +27,12 @@ export function Dashboard() {
             case 'connection': {
                 let callEvent: CallEvent = ws_message.payload as CallEvent
                 console.log(callEvent)
-                dispatch({ type: 'ADD_EDGE', payload: callEvent, traceId: ws_message.traceId, pid: ws_message.pid })
+                dispatch({ type: 'ADD_EDGE', payload: callEvent, traceId: ws_message.traceId, pid: ws_message.pid, tid: ws_message.tid })
                 break
             }
             case 'event': {
                 let functionEvent: FunctionEvent = ws_message.payload as FunctionEvent
-                dispatch({ type: 'UPSERT_NODE', payload: functionEvent, traceId: ws_message.traceId, pid: ws_message.pid })
+                dispatch({ type: 'UPSERT_NODE', payload: functionEvent, traceId: ws_message.traceId, pid: ws_message.pid, tid: ws_message.tid })
                 break
             }
         }
@@ -49,7 +49,7 @@ export function Dashboard() {
     const merged = useMemo(() => mergeTraces(traces), [traces])
     const edges = merged.edges
     const functionStats = merged.node
-    const byPid = useMemo(() => mergeTracesByPid(traces), [traces])
+    const processViews = useMemo(() => buildProcessViews(traces), [traces])
 
     return (
         <div className="dashboard">
@@ -60,7 +60,7 @@ export function Dashboard() {
 
             <section className="panel">
                 <h2>Graph</h2>
-                <CallGraph processes={byPid} />
+                <CallGraph processes={processViews} />
             </section>
 
             <section className="panel">
