@@ -89,7 +89,7 @@ func (s *Server) handleEdge(edge *pb.CallEdge) {
 		return
 	}
 	callEvent := callstack.CallEvent{Caller: edge.Caller, Callee: edge.Callee}
-	s.connection.Broadcast(broadcast.WsMessage{Type: "connection", Payload: callEvent, TraceId: edge.TraceId})
+	s.connection.Broadcast(broadcast.WsMessage{Type: "connection", Payload: callEvent, TraceId: edge.TraceId, Pid: edge.Pid})
 }
 
 func (s *Server) handleResult(result *pb.CallResult) {
@@ -156,5 +156,5 @@ func (s *Server) handleResult(result *pb.CallResult) {
 
 	event_data.TimeStamp = timeStampUnix
 	event_data.CommitHash = s.commit
-	s.connection.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: result.TraceId})
+	s.connection.Broadcast(broadcast.WsMessage{Type: "event", Payload: event_data, TraceId: result.TraceId, Pid: result.Pid})
 }
