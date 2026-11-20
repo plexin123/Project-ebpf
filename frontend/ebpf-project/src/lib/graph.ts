@@ -68,54 +68,85 @@ import type { GraphState, TracesState } from '../state/graphReduce'
 
     }
 
-// one function in a thread's call tree; the same function can appear under
-// several parents (e.g. checksum under validate_order and save_order)
-export type CallTreeNode = {
+// one card in the call graph: every function appears once per process
+export type FlowNode = {
     name: string
     latest?: FunctionEvent
-    // calls itself or an ancestor: drawn as a badge instead of an endless branch
+    // calls itself: shown as a badge, the self-edge is not drawn
     recursive: boolean
-    children: CallTreeNode[]
 }
 
-export type ThreadLane = {
-    tid: number
-    roots: CallTreeNode[]
+export type FlowEdge = {
+    source: string
+    target: string
 }
 
-export type ProcessView = {
+// all threads of a process merged into one graph
+export type ProcessGraph = {
     pid: number
     label: string
-    threads: ThreadLane[]
+    threadCount: number
+    nodes: FlowNode[]
+    edges: FlowEdge[]
 }
 
 export function mergeTraces(traces: TracesState): GraphState {
     return mergeGraphs(traces.values())
 }
 
-// process -> thread -> call tree, sorted by pid/tid so the layout doesn't jump around
-export function buildProcessViews(traces: TracesState): ProcessView[] {
-    const byProcess = new Map<number, Map<number, GraphState[]>>()
+// sorted by pid so the boxes don't jump around as events arrive
+export function buildProcessGraphs(traces: TracesState): ProcessGraph[] {
+    const byProcess = new Map<number, { graphs: GraphState[]; tids: Set<number> }>()
     for (const graphState of traces.values()) {
         const pid = graphState.pid ?? 0
-        const tid = graphState.tid ?? 0
-        const threads = byProcess.get(pid) ?? new Map<number, GraphState[]>()
-        const group = threads.get(tid) ?? []
-        group.push(graphState)
-        threads.set(tid, group)
-        byProcess.set(pid, threads)
+        const group = byProcess.get(pid) ?? { graphs: [], tids: new Set<number>() }
+        group.graphs.push(graphState)
+        group.tids.add(graphState.tid ?? 0)
+        byProcess.set(pid, group)
     }
 
-    const views: ProcessView[] = []
-    for (const [pid, threads] of byProcess) {
-        const lanes: ThreadLane[] = []
-        for (const [tid, graphs] of threads) {
-            lanes.push({ tid, roots: callTrees(mergeGraphs(graphs)) })
+    const processes: ProcessGraph[] = []
+    for (const [pid, { graphs, tids }] of byProcess) {
+        const merged = mergeGraphs(graphs)
+        const nodes = new Map<string, FlowNode>()
+        const nodeFor = (name: string): FlowNode => {
+            let node = nodes.get(name)
+            if (!node) {
+                node = { name, latest: newest(merged.node.get(name)), recursive: false }
+                nodes.set(name, node)
+            }
+            return node
         }
-        lanes.sort((a, b) => a.tid - b.tid)
-        views.push({ pid, label: processLabel(pid, lanes), threads: lanes })
+
+        for (const name of merged.node.keys()) nodeFor(name)
+        const edges: FlowEdge[] = []
+        for (const [caller, callees] of merged.edges) {
+            const source = nodeFor(caller)
+            for (const callee of callees) {
+                if (callee === caller) {
+                    source.recursive = true
+                    continue
+                }
+                nodeFor(callee)
+                edges.push({ source: caller, target: callee })
+            }
+        }
+
+        processes.push({
+            pid,
+            label: processLabel(pid, [...nodes.keys()]),
+            threadCount: tids.size,
+            nodes: [...nodes.values()],
+            edges
+        })
     }
-    return views.sort((a, b) => a.pid - b.pid)
+    return processes.sort((a, b) => a.pid - b.pid)
+}
+
+// history is concatenated from several threads, so the last element isn't always the newest
+function newest(history: FunctionEvent[] | undefined): FunctionEvent | undefined {
+    if (!history || history.length === 0) return undefined
+    return history.reduce((a, b) => (b.timestamp >= a.timestamp ? b : a))
 }
 
 function mergeGraphs(graphs: Iterable<GraphState>): GraphState {
@@ -141,46 +172,11 @@ function mergeGraphs(graphs: Iterable<GraphState>): GraphState {
     return merged
 }
 
-// roots are the functions nobody calls inside this thread (the backend drops
-// the "" -> root edge, so a root only shows up as a node or as a caller)
-function callTrees(graph: GraphState): CallTreeNode[] {
-    const names = new Set<string>(graph.node.keys())
-    const callees = new Set<string>()
-    for (const [caller, children] of graph.edges) {
-        names.add(caller)
-        for (const child of children) {
-            names.add(child)
-            if (child !== caller) callees.add(child)
-        }
-    }
-    let roots = [...names].filter((name) => !callees.has(name))
-    // everything is part of a cycle: start anywhere
-    if (roots.length === 0) roots = [...names].slice(0, 1)
-
-    const build = (name: string, path: Set<string>): CallTreeNode => {
-        const history = graph.node.get(name)
-        const node: CallTreeNode = { name, latest: history?.[history.length - 1], recursive: false, children: [] }
-        path.add(name)
-        for (const child of graph.edges.get(name) ?? []) {
-            if (path.has(child)) {
-                node.recursive = true
-                continue
-            }
-            node.children.push(build(child, path))
-        }
-        path.delete(name)
-        return node
-    }
-    return roots.map((root) => build(root, new Set()))
-}
-
 // "orders · pid 4121": the crate name comes from the Rust symbol prefix (orders::...)
-function processLabel(pid: number, lanes: ThreadLane[]): string {
-    for (const lane of lanes) {
-        for (const root of lane.roots) {
-            const sep = root.name.indexOf('::')
-            if (sep > 0) return `${root.name.slice(0, sep)} · pid ${pid}`
-        }
+function processLabel(pid: number, names: string[]): string {
+    for (const name of names) {
+        const sep = name.indexOf('::')
+        if (sep > 0) return `${name.slice(0, sep)} · pid ${pid}`
     }
     return `pid ${pid}`
 }

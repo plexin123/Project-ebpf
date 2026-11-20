@@ -1,26 +1,26 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import type { CallTreeNode, ProcessView } from '../lib/graph'
+import dagre from '@dagrejs/dagre'
+import type { FlowEdge, FlowNode, ProcessGraph } from '../lib/graph'
 import type { FunctionEvent } from '../types/events'
 import { ConvertIntoMilliSeconds } from '../lib/format'
 import './CallGraph.css'
 
-// layout is deterministic (no physics): d3 computes the tree positions,
+// dagre places the cards left -> right in columns (caller before callee),
 // React draws the SVG, and d3.zoom only handles pan/zoom
-const COL_W = 200        // horizontal distance between a caller and its callee
-const ROW_H = 52         // vertical space per function (name above, timings below)
-const NODE_R = 7
-const LANE_LABEL_W = 130 // left column with the thread name
+const CARD_W = 170
+const CARD_H = 46
+const STRIPE_W = 4
+const HEADER_H = 34      // process title
 const BOX_PAD = 16
-const HEADER_H = 30      // process title
 const BOX_GAP = 20       // space between process boxes
+const MAX_NAME = 20      // longer names are cut with … (full name in the tooltip)
 const MAX_HEIGHT = 720   // taller content is reached by panning
 
-type PlacedNode = { key: string; x: number; y: number; node: CallTreeNode }
-type PlacedLink = { key: string; d: string }
-type PlacedLane = { tid: number; y: number; height: number; nodes: PlacedNode[]; links: PlacedLink[] }
-type PlacedProcess = { pid: number; label: string; y: number; height: number; lanes: PlacedLane[] }
-type Layout = { width: number; height: number; processes: PlacedProcess[] }
+type PlacedCard = { x: number; y: number; node: FlowNode }
+type PlacedEdge = { key: string; edge: FlowEdge; d: string }
+type PlacedProcess = { graph: ProcessGraph; y: number; width: number; height: number; cards: PlacedCard[]; edges: PlacedEdge[] }
+type Hovered = { pid: number; name: string } | null
 
 function statusVar(status: FunctionEvent['status'] | 'unknown'): string {
     switch (status) {
@@ -33,82 +33,91 @@ function statusVar(status: FunctionEvent['status'] | 'unknown'): string {
 
 // orders::main::{{closure}} -> main::closure, main.handleA -> handleA
 function shortName(name: string): string {
-    return name
+    const short = name
         .replace(/^main\./, '')
         .replace(/^[^:]+::/, '')
         .replace(/\{\{closure\}\}/g, 'closure')
+    return short.length > MAX_NAME ? short.slice(0, MAX_NAME - 1) + '…' : short
 }
 
-function laneName(pid: number, tid: number): string {
-    // on Linux the main thread's tid is the process id
-    return tid === pid ? `main thread ${tid}` : `thread ${tid}`
-}
-
-function timings(node: CallTreeNode): string {
+function tooltip(node: FlowNode): string {
     const latest = node.latest
-    if (!latest) return 'running…'
-    const total = ConvertIntoMilliSeconds(latest.duration)
-    return latest.selfTime != null ? `${total} · self ${ConvertIntoMilliSeconds(latest.selfTime)}` : total
+    if (!latest) return `${node.name}\nrunning…`
+    const lines = [node.name, `total ${ConvertIntoMilliSeconds(latest.duration)}`]
+    if (latest.selfTime != null) lines.push(`self  ${ConvertIntoMilliSeconds(latest.selfTime)}`)
+    lines.push(`status ${latest.status}`)
+    if (node.recursive) lines.push('calls itself (recursive)')
+    return lines.join('\n')
 }
 
-const link = d3.linkHorizontal<{ source: [number, number]; target: [number, number] }, [number, number]>()
+const curve = d3.line<{ x: number; y: number }>().x((p) => p.x).y((p) => p.y).curve(d3.curveBasis)
 
-function layoutLane(pid: number, tid: number, roots: CallTreeNode[], top: number): PlacedLane {
-    // one virtual root so several real roots share a single tree layout
-    const virtual: CallTreeNode = { name: '', recursive: false, children: roots }
-    const tree = d3.tree<CallTreeNode>().nodeSize([ROW_H, COL_W]).separation(() => 1)(d3.hierarchy(virtual))
-    const real = tree.descendants().filter((d) => d.depth > 0)
+function layoutProcess(graph: ProcessGraph, top: number): PlacedProcess {
+    const g = new dagre.graphlib.Graph()
+    g.setGraph({ rankdir: 'LR', nodesep: 16, ranksep: 60, marginx: BOX_PAD, marginy: 8 })
+    g.setDefaultEdgeLabel(() => ({}))
+    for (const node of graph.nodes) g.setNode(node.name, { width: CARD_W, height: CARD_H })
+    for (const edge of graph.edges) g.setEdge(edge.source, edge.target)
+    dagre.layout(g)
 
-    const minX = d3.min(real, (d) => d.x) ?? 0
-    const maxX = d3.max(real, (d) => d.x) ?? 0
-    const left = BOX_PAD + LANE_LABEL_W
-    // d3.tree's x is vertical and y is horizontal; depth 1 is the first real column
-    const toScreen = (d: d3.HierarchyPointNode<CallTreeNode>): [number, number] =>
-        [left + d.y - COL_W, top + d.x - minX + ROW_H / 2]
-    const pathKey = (d: d3.HierarchyPointNode<CallTreeNode>) =>
-        `${pid}:${tid}:` + d.ancestors().map((a) => a.data.name).reverse().join('>')
-
-    const nodes = real.map((d) => {
-        const [x, y] = toScreen(d)
-        return { key: pathKey(d), x, y, node: d.data }
+    // dagre gives card centers; shift everything below the process title
+    const cards = graph.nodes.map((node) => {
+        const { x, y } = g.node(node.name)
+        return { x: x - CARD_W / 2, y: y - CARD_H / 2 + HEADER_H, node }
     })
-    const links = tree.links()
-        .filter((l) => l.source.depth > 0)
-        .map((l) => {
-            const [sx, sy] = toScreen(l.source)
-            const [tx, ty] = toScreen(l.target)
-            // stop before the target circle so the arrow head stays visible
-            const d = link({ source: [sx + NODE_R, sy], target: [tx - NODE_R - 3, ty] }) ?? ''
-            return { key: pathKey(l.target), d }
-        })
-    return { tid, y: top, height: maxX - minX + ROW_H, nodes, links }
-}
-
-function computeLayout(processes: ProcessView[]): Layout {
-    let y = 0
-    let width = 0
-    const placed: PlacedProcess[] = []
-    for (const process of processes) {
-        const lanes: PlacedLane[] = []
-        let laneTop = HEADER_H
-        for (const thread of process.threads) {
-            const lane = layoutLane(process.pid, thread.tid, thread.roots, laneTop)
-            lanes.push(lane)
-            laneTop += lane.height
-            for (const n of lane.nodes) width = Math.max(width, n.x + COL_W)
-        }
-        const height = laneTop + BOX_PAD / 2
-        placed.push({ pid: process.pid, label: process.label, y, height, lanes })
-        y += height + BOX_GAP
+    const edges = graph.edges.map((edge) => {
+        const points = g.edge(edge.source, edge.target).points.map((p) => ({ x: p.x, y: p.y + HEADER_H }))
+        return { key: `${edge.source}->${edge.target}`, edge, d: curve(points) ?? '' }
+    })
+    const size = g.graph()
+    return {
+        graph,
+        y: top,
+        width: Math.max((size.width ?? 0), 360),
+        height: (size.height ?? 0) + HEADER_H,
+        cards,
+        edges
     }
-    return { width: Math.max(width, 400), height: Math.max(y - BOX_GAP, 0), processes: placed }
 }
 
-export function CallGraph({ processes }: { processes: ProcessView[] }) {
+// everything that calls `name` (directly or not) and everything it calls
+function relatedTo(graph: ProcessGraph, name: string) {
+    const walk = (start: string, next: (n: string) => string[]) => {
+        const seen = new Set<string>([start])
+        const queue = [start]
+        while (queue.length) {
+            for (const n of next(queue.shift()!)) {
+                if (!seen.has(n)) {
+                    seen.add(n)
+                    queue.push(n)
+                }
+            }
+        }
+        return seen
+    }
+    const callers = walk(name, (n) => graph.edges.filter((e) => e.target === n).map((e) => e.source))
+    const callees = walk(name, (n) => graph.edges.filter((e) => e.source === n).map((e) => e.target))
+    return {
+        node: (n: string) => callers.has(n) || callees.has(n),
+        edge: (e: FlowEdge) =>
+            (callers.has(e.source) && callers.has(e.target)) || (callees.has(e.source) && callees.has(e.target))
+    }
+}
+
+export function CallGraph({ processes }: { processes: ProcessGraph[] }) {
     const svgRef = useRef<SVGSVGElement | null>(null)
     const zoomRef = useRef<SVGGElement | null>(null)
+    const [hovered, setHovered] = useState<Hovered>(null)
 
-    const layout = useMemo(() => computeLayout(processes), [processes])
+    const layout = useMemo(() => {
+        let top = 0
+        const placed = processes.map((graph) => {
+            const p = layoutProcess(graph, top)
+            top += p.height + BOX_GAP
+            return p
+        })
+        return { processes: placed, height: Math.max(top - BOX_GAP, 0) }
+    }, [processes])
 
     // pan/zoom only moves the content group; the layout itself never changes
     useEffect(() => {
@@ -127,52 +136,73 @@ export function CallGraph({ processes }: { processes: ProcessView[] }) {
     const height = Math.min(Math.max(layout.height + 2, 160), MAX_HEIGHT)
 
     return (
-        <div className="callgraph-wrap" style={{ height }}>
-            {processes.length === 0 && <div className="callgraph-empty">waiting for events…</div>}
-            <svg ref={svgRef} className="callgraph-svg">
-                <defs>
-                    <marker id="callgraph-arrow" viewBox="0 -5 10 10" refX={9} refY={0}
-                        markerWidth={7} markerHeight={7} orient="auto">
-                        <path d="M0,-5 L10,0 L0,5" fill="var(--edge)" />
-                    </marker>
-                </defs>
-                <g ref={zoomRef}>
-                    {layout.processes.map((process) => (
-                        <g key={process.pid} transform={`translate(0,${process.y})`}>
-                            <rect className="process-box" width={layout.width} height={process.height} rx={8} />
-                            <text className="process-label" x={BOX_PAD} y={20}>{process.label}</text>
-
-                            {process.lanes.map((lane, i) => (
-                                <g key={lane.tid}>
-                                    {i > 0 && (
-                                        <line className="lane-divider" x1={BOX_PAD} x2={layout.width - BOX_PAD}
-                                            y1={lane.y} y2={lane.y} />
-                                    )}
-                                    <text className="lane-label" x={BOX_PAD} y={lane.y + ROW_H / 2 + 4}>
-                                        {laneName(process.pid, lane.tid)}
+        <div className="callgraph">
+            <div className="callgraph-wrap" style={{ height }}>
+                {processes.length === 0 && <div className="callgraph-empty">waiting for events…</div>}
+                <svg ref={svgRef} className="callgraph-svg">
+                    <defs>
+                        <marker id="callgraph-arrow" viewBox="0 -5 10 10" refX={9} refY={0}
+                            markerWidth={7} markerHeight={7} orient="auto">
+                            <path d="M0,-5 L10,0 L0,5" fill="var(--edge)" />
+                        </marker>
+                    </defs>
+                    <g ref={zoomRef}>
+                        {layout.processes.map((process) => {
+                            const { graph } = process
+                            const focus = hovered?.pid === graph.pid ? relatedTo(graph, hovered.name) : null
+                            return (
+                                <g key={graph.pid} transform={`translate(0,${process.y})`}>
+                                    <rect className="process-box" width={process.width} height={process.height} rx={10} />
+                                    <text className="process-label" x={BOX_PAD} y={22}>
+                                        {graph.label}
+                                        <tspan className="process-threads">
+                                            {`  ·  ${graph.threadCount} thread${graph.threadCount === 1 ? '' : 's'}`}
+                                        </tspan>
                                     </text>
 
-                                    {lane.links.map((l) => <path key={l.key} className="edge-line" d={l.d} />)}
-
-                                    {lane.nodes.map(({ key, x, y, node }) => (
-                                        <g key={key} className="node-group" transform={`translate(${x},${y})`}>
-                                            <title>{`${node.name}\n${timings(node)}`}</title>
-                                            <circle className="node-circle" r={NODE_R}
-                                                stroke={statusVar(node.latest?.status ?? 'unknown')} />
-                                            <text className="node-label" x={-NODE_R} y={-NODE_R - 6}>
-                                                {shortName(node.name)}{node.recursive ? ' ↻' : ''}
-                                            </text>
-                                            <text className="node-meta" x={-NODE_R} y={NODE_R + 14}>
-                                                {timings(node)}
-                                            </text>
-                                        </g>
+                                    {process.edges.map(({ key, edge, d }) => (
+                                        <path key={key} d={d}
+                                            className={`edge-line${focus ? (focus.edge(edge) ? ' is-active' : ' is-dim') : ''}`} />
                                     ))}
+
+                                    {process.cards.map(({ x, y, node }) => {
+                                        const status = node.latest?.status ?? 'unknown'
+                                        const drift = node.latest?.driftPct ?? 0
+                                        const dim = focus && !focus.node(node.name)
+                                        return (
+                                            <g key={node.name} transform={`translate(${x},${y})`}
+                                                className={`card${dim ? ' is-dim' : ''}`}
+                                                onMouseEnter={() => setHovered({ pid: graph.pid, name: node.name })}
+                                                onMouseLeave={() => setHovered(null)}>
+                                                <title>{tooltip(node)}</title>
+                                                <rect className="card-bg" width={CARD_W} height={CARD_H} rx={6} />
+                                                <rect className="card-stripe" width={STRIPE_W} height={CARD_H} rx={2}
+                                                    fill={statusVar(status)} />
+                                                <text className="card-name" x={STRIPE_W + 10} y={19}>
+                                                    {shortName(node.name)}{node.recursive ? ' ↻' : ''}
+                                                </text>
+                                                <text className="card-time" x={STRIPE_W + 10} y={36}>
+                                                    {node.latest ? ConvertIntoMilliSeconds(node.latest.duration) : 'running…'}
+                                                    {status === 'regression' && (
+                                                        <tspan className="card-drift">{`  ▲ +${drift.toFixed(0)}%`}</tspan>
+                                                    )}
+                                                </text>
+                                            </g>
+                                        )
+                                    })}
                                 </g>
-                            ))}
-                        </g>
-                    ))}
-                </g>
-            </svg>
+                            )
+                        })}
+                    </g>
+                </svg>
+            </div>
+            <div className="callgraph-legend">
+                <span><i style={{ background: 'var(--ok)' }} />ok</span>
+                <span><i style={{ background: 'var(--warn)' }} />new baseline</span>
+                <span><i style={{ background: 'var(--critical)' }} />regression</span>
+                <span><i style={{ background: 'var(--border)' }} />running</span>
+                <span className="callgraph-hint">hover a function to follow its path · drag to pan · scroll to zoom</span>
+            </div>
         </div>
     )
 }

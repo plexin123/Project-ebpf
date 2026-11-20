@@ -3,6 +3,7 @@
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -28,7 +29,7 @@
 .process-box {
   fill: var(--bg);
   stroke: var(--border);
-  stroke-width: 1.5px;
+  stroke-width: 1px;
 }
 
 .process-label {
@@ -38,42 +39,97 @@
   fill: var(--text-h);
 }
 
-/* one lane per thread inside the box */
-.lane-divider {
-  stroke: var(--border);
-  stroke-dasharray: 4 4;
-}
-
-.lane-label {
-  font-family: var(--mono);
-  font-size: 11px;
+.process-threads {
+  font-weight: 400;
   fill: var(--text);
-  opacity: 0.75;
 }
 
+/* arrows between cards */
 .edge-line {
   stroke: var(--edge);
-  stroke-width: 1.4px;
+  stroke-width: 1.5px;
   fill: none;
   marker-end: url(#callgraph-arrow);
+  transition: opacity 0.15s, stroke-width 0.15s;
 }
 
-.node-circle {
+.edge-line.is-active {
+  stroke: var(--accent);
+  stroke-width: 2.25px;
+}
+
+.edge-line.is-dim {
+  opacity: 0.15;
+}
+
+/* function cards */
+.card {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.card.is-dim {
+  opacity: 0.25;
+}
+
+.card-bg {
   fill: var(--surface);
-  stroke-width: 2.5px;
+  stroke: var(--border);
+  stroke-width: 1px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12));
 }
 
-.node-label {
+.card:hover .card-bg {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+}
+
+.card-name {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 11.5px;
+  font-weight: 600;
   fill: var(--text-h);
   pointer-events: none;
 }
 
-.node-meta {
+.card-time {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   fill: var(--text);
-  opacity: 0.7;
   pointer-events: none;
+}
+
+.card-drift {
+  fill: var(--critical);
+  font-weight: 600;
+}
+
+/* legend under the graph */
+.callgraph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.callgraph-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.callgraph-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.callgraph-hint {
+  margin-left: auto;
+  opacity: 0.6;
 }

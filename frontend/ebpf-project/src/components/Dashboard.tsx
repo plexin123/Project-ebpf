@@ -10,7 +10,7 @@ import { WebsocketConnectionEntrance } from '../hooks/useWebsockets'
 import { ConvertIntoMilliSeconds } from '../lib/format'
 import { useGraph } from '../state/GraphContext'
 import { CallEvent, FunctionEvent, WSMessage } from '../types/events'
-import { buildProcessViews, mergeTraces } from '../lib/graph'
+import { buildProcessGraphs, mergeTraces } from '../lib/graph'
 import { CallGraph } from './CallGraph'
 import './Dashboard.css'
 
@@ -49,7 +49,7 @@ export function Dashboard() {
     const merged = useMemo(() => mergeTraces(traces), [traces])
     const edges = merged.edges
     const functionStats = merged.node
-    const processViews = useMemo(() => buildProcessViews(traces), [traces])
+    const processGraphs = useMemo(() => buildProcessGraphs(traces), [traces])
 
     return (
         <div className="dashboard">
@@ -60,7 +60,7 @@ export function Dashboard() {
 
             <section className="panel">
                 <h2>Graph</h2>
-                <CallGraph processes={processViews} />
+                <CallGraph processes={processGraphs} />
             </section>
 
             <section className="panel">
